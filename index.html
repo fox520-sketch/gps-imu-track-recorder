@@ -72,7 +72,7 @@
       <div id="recordBadge" class="badge">Idle</div>
     </div>
 
-    <div class="note"><strong>說明</strong>長按地圖約 0.6 秒可新增標記；點開標記後可用 modal 編輯或刪除，不再使用 prompt / confirm。</div>
+    <div class="btns" style="margin-bottom:12px"><button id="installBtn" class="btn secondary" type="button" style="display:none">安裝到主畫面</button><button id="refreshCacheBtn" class="btn secondary" type="button">更新離線快取</button></div><div class="note"><strong>說明</strong>長按地圖約 0.6 秒可新增標記；點開標記後可用 modal 編輯或刪除，不再使用 prompt / confirm。</div>
 
     <div class="field">
       <label for="trackName">軌跡名稱</label>
@@ -1457,5 +1457,54 @@
   updateUI();
 })();
 </script>
+
+<script>
+(function(){
+  let deferredPrompt = null;
+
+  async function setupPWA(){
+    if("serviceWorker" in navigator){
+      try{ await navigator.serviceWorker.register("./sw.js"); }catch(e){}
+    }
+    const installBtn = document.getElementById("installBtn");
+    const refreshCacheBtn = document.getElementById("refreshCacheBtn");
+
+    window.addEventListener("beforeinstallprompt", function(e){
+      e.preventDefault();
+      deferredPrompt = e;
+      if(installBtn) installBtn.style.display = "inline-block";
+    });
+
+    window.addEventListener("appinstalled", function(){
+      deferredPrompt = null;
+      if(installBtn) installBtn.style.display = "none";
+    });
+
+    if(installBtn){
+      installBtn.addEventListener("click", async function(){
+        if(!deferredPrompt) return;
+        deferredPrompt.prompt();
+        try{ await deferredPrompt.userChoice; }catch(e){}
+        deferredPrompt = null;
+        installBtn.style.display = "none";
+      });
+    }
+
+    if(refreshCacheBtn){
+      refreshCacheBtn.addEventListener("click", function(){
+        if(!navigator.serviceWorker || !navigator.serviceWorker.controller){
+          alert("目前還沒有啟用 service worker。重新整理一次頁面後再試。");
+          return;
+        }
+        navigator.serviceWorker.controller.postMessage({ type: "SKIP_WAITING" });
+        alert("已要求更新快取，請重新整理頁面。");
+      });
+    }
+  }
+
+  setupPWA();
+})();
+</script>
+
 </body>
 </html>
