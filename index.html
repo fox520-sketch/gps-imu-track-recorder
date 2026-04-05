@@ -63,7 +63,16 @@
     .modal-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
     .hidden{display:none!important}
     #cardCanvas{width:100%;max-width:420px;border:1px solid var(--border);border-radius:16px;background:#fff}
+    
+    .map-wrap{position:relative;width:100%;height:100%}
+    .map-fab{position:absolute;top:12px;right:12px;z-index:1200;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.18)}
+    body.map-fullscreen{overflow:hidden}
+    body.map-fullscreen .wrap{max-width:none;padding:0;grid-template-columns:1fr}
+    body.map-fullscreen .wrap > .card:first-child{display:none}
+    body.map-fullscreen .wrap > .card:last-child{position:fixed;inset:0;z-index:2500;border-radius:0;border:0}
+    body.map-fullscreen #map{min-height:100vh;height:100vh}
     @media (max-width:1024px){.wrap{grid-template-columns:1fr}#map{min-height:52vh}}
+
   </style>
 </head>
 <body>
@@ -239,7 +248,7 @@
     <div id="statusBox" class="alert"><strong>尚未開始</strong><span>按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。</span></div>
   </div></div>
 
-  <div class="card"><div id="map"></div></div>
+  <div class="card"><div class="map-wrap"><button id="mapFullscreenBtn" class="map-fab" type="button">全螢幕地圖</button><div id="map"></div></div></div>
 </div>
 
 <div id="markerModal" class="modal-backdrop" aria-hidden="true">
@@ -311,7 +320,7 @@
     markerModal:$("markerModal"), markerModalTitle:$("markerModalTitle"), markerModalSub:$("markerModalSub"), modalMarkerName:$("modalMarkerName"),
     modalMarkerCategory:$("modalMarkerCategory"), modalMarkerMemo:$("modalMarkerMemo"), markerDeleteBtn:$("markerDeleteBtn"), markerCancelBtn:$("markerCancelBtn"),
     markerSaveBtn:$("markerSaveBtn"), installBtn:$("installBtn"), refreshCacheBtn:$("refreshCacheBtn"), shareAppBtn:$("shareAppBtn"), shareTrackBtn:$("shareTrackBtn"),
-    toggleThemeBtn:$("toggleThemeBtn"), compareSummary:$("compareSummary"), cardCanvas:$("cardCanvas"), redrawCardBtn:$("redrawCardBtn")
+    toggleThemeBtn:$("toggleThemeBtn"), compareSummary:$("compareSummary"), cardCanvas:$("cardCanvas"), redrawCardBtn:$("redrawCardBtn"), mapFullscreenBtn:$("mapFullscreenBtn")
   };
 
   function saveState(){
@@ -527,6 +536,13 @@
   function downloadCard(){ drawShareCard(); const a=document.createElement("a"); a.href=el.cardCanvas.toDataURL("image/png"); a.download=(state.trackName||"track")+"_card.png"; a.click(); }
   function updateStats(){ el.statTime.textContent=formatDuration(state.elapsedMs); el.statDistance.textContent=formatDistance(totalDistance()); el.statSpeed.textContent=formatSpeed(latestPoint()?latestPoint().speed:NaN); el.statAvgSpeed.textContent=formatSpeed(state.elapsedMs>0?totalDistance()/(state.elapsedMs/1000):NaN); el.statMaxSpeed.textContent=formatSpeed(maxSpeed()); el.statPoints.textContent=String(state.points.length); el.statMaxAlt.textContent=formatAlt(maxAlt()); }
   function switchTab(name){ document.querySelectorAll(".tab-panel").forEach(p=>p.classList.remove("active")); document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active")); $("tab-"+name).classList.add("active"); document.querySelector('.tab-btn[data-tab="'+name+'"]').classList.add("active"); setTimeout(()=>state.map.invalidateSize(),50); }
+
+  function toggleMapFullscreen(){
+    const on = document.body.classList.toggle("map-fullscreen");
+    if(el.mapFullscreenBtn) el.mapFullscreenBtn.textContent = on ? "離開全螢幕" : "全螢幕地圖";
+    setTimeout(function(){ if(state.map) state.map.invalidateSize(); }, 80);
+  }
+
   function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length:"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
 
   el.trackName.addEventListener("input", function(){ state.trackName=this.value; saveState(); drawShareCard(); });
@@ -577,6 +593,7 @@
   el.shareAppBtn.addEventListener("click", shareApp);
   el.shareTrackBtn.addEventListener("click", shareTrack);
   el.toggleThemeBtn.addEventListener("click", function(){ state.darkModeEnabled=!state.darkModeEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; saveState(); applyTheme(); drawShareCard(); });
+  if(el.mapFullscreenBtn) el.mapFullscreenBtn.addEventListener("click", toggleMapFullscreen);
   window.addEventListener("keydown", function(e){ if(e.key==="Escape"&&el.markerModal.classList.contains("show")) closeMarkerModal(); });
   document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="visible"&&state.wakeLockEnabled&&state.isRecording&&!state.isPaused) ensureWakeLock(); });
 
