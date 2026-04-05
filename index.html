@@ -28,6 +28,13 @@
     .input,.select,.textarea{width:100%;border:1px solid var(--border);border-radius:12px;padding:11px 12px;background:var(--card);color:var(--text)}
     .textarea{min-height:88px;resize:vertical}
     .inline,.btns,.legend,.tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+    .action-grid .btn,.top-tools .btn{width:100%;justify-content:center}
+    .top-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}
+    @media (max-width:640px){
+      .action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .top-tools{grid-template-columns:1fr}
+    }
     .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
     .grid2,.grid3{display:grid;gap:10px;margin-bottom:12px}.grid2{grid-template-columns:1fr 1fr}.grid3{grid-template-columns:repeat(3,1fr)}
     .stat{border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--card)}
@@ -95,7 +102,7 @@
 
     <div id="installHint" class="pill-note">第 3 波：支援安裝、分享圖卡、歷史搜尋、多軌跡比較、深色模式。</div>
 
-    <div class="btns" style="margin:12px 0">
+    <div class="top-tools">
       <button id="installBtn" class="btn dark hidden" type="button">安裝到主畫面</button>
       <button id="refreshCacheBtn" class="btn secondary" type="button">更新離線快取</button>
       <button id="shareAppBtn" class="btn secondary" type="button">分享 App 連結</button>
@@ -156,18 +163,19 @@
       <div class="stat"><div class="k">最高海拔</div><div class="v" id="statMaxAlt">-- m</div></div>
     </div>
 
-    <div class="btns">
+    <div class="action-grid">
       <button id="startBtn" class="btn primary" type="button">開始 GPS</button>
       <button id="startImuBtn" class="btn imu" type="button">開始陀螺儀</button>
-      <button id="calibrateImuBtn" class="btn secondary" type="button">校準陀螺儀到 GPS</button>
-      <button id="centerBtn" class="btn secondary" type="button">回到目前位置</button>
+      <button id="calibrateImuBtn" class="btn secondary" type="button">校準到 GPS</button>
       <button id="pauseBtn" class="btn warning" type="button" disabled>暫停</button>
       <button id="resumeBtn" class="btn success" type="button" disabled>繼續</button>
       <button id="stopBtn" class="btn secondary" type="button" disabled>停止</button>
+      <button id="centerBtn" class="btn secondary" type="button">回到目前位置</button>
       <button id="locateBtn" class="btn secondary" type="button">更新位置</button>
-      <button id="saveTrackBtn" class="btn success" type="button" disabled>保存此軌跡</button>
+      <button id="saveTrackBtn" class="btn success" type="button" disabled>保存軌跡</button>
       <button id="clearBtn" class="btn danger" type="button">清除目前</button>
     </div>
+    <div class="mini" style="margin:-2px 0 12px 0;">上排為開始 / 校準 / 暫停控制，下排為定位 / 保存 / 清除。</div>
 
     <div class="tabs">
       <button class="tab-btn active" data-tab="settings">設定</button>
@@ -200,7 +208,7 @@
           <option value="csv">CSV</option>
           <option value="json">JSON</option>
         </select>
-        <div style="margin-top:10px" class="btns">
+        <div style="margin-top:10px" class="top-tools">
           <button id="exportBtn" class="btn primary" type="button">匯出目前軌跡</button>
           <button id="exportFullBtn" class="btn success" type="button">匯出完整備份</button>
           <button id="downloadCardBtn" class="btn secondary" type="button">下載分享圖卡</button>
