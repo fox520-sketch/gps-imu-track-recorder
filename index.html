@@ -57,7 +57,7 @@
     .points,.history{max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:14px;padding:10px;background:var(--card)}
     .point,.history-item{border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px;font-size:13px;line-height:1.5}
     .chart{border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--card)}
-    #map{width:100%;min-height:76vh;height:100%}
+    #map{width:100%;min-height:76vh;height:100%;transform-origin:center center}
     .legend .dot{width:12px;height:12px;border-radius:999px;display:inline-block}.dot.gps{background:#2563eb}.dot.imu{background:#7c3aed}.dot.smart{background:#ffffff;border:1px solid #0f172a}
     .marker-pin{width:16px;height:16px;border-radius:999px;border:2px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.25)}
     .marker-chip{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;margin-bottom:6px;color:#fff}
@@ -151,7 +151,9 @@
     <div class="group"><div class="row"><div><label style="margin:0">顯示 GPS 軌跡</label></div><input id="showGpsLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">顯示陀螺儀軌跡</label></div><input id="showImuLine" class="switch" type="checkbox" checked></div></div>
 
-    <div class="group"><div class="row"><div><label style="margin:0">顯示智慧軌跡</label><div class="mini">白色主線，整合 GPS / IMU 點位</div></div><input id="showSmartLine" class="switch" type="checkbox" checked></div></div>
+    <div class="group"><div class="row"><div><label style="margin:0">顯示智慧軌跡</label></div><input id="showSmartLine" class="switch" type="checkbox" checked></div></div>
+
+    <div class="group"><div class="row"><div><label style="margin:0">地圖旋轉</label><div class="mini">跟隨方向旋轉地圖</div></div><input id="rotateMap" class="switch" type="checkbox"></div></div><div class="mini">白色主線，整合 GPS / IMU 點位</div></div><input id="showSmartLine" class="switch" type="checkbox" checked></div></div>
 
     <div class="debug"><strong>IMU 偵測狀態</strong><div id="imuDebugText">尚未啟動陀螺儀。</div></div>
 
@@ -319,7 +321,7 @@
     exportFormat: "gpx", markerCategory: "default", startedAt: null, elapsedMs: 0, pausedAccumulatedMs: 0, pauseStartedAt: null,
     watchId: null, timer: null, map: null, marker: null, gpsLine: null, imuLine: null, gpsPointLayer: null, imuPointLayer: null,
     compareLayer: null, smartShadowLine: null, smartLine: null, placeLabelMarker: null, markerRefs: [], markerLayer: null, mapPressTimer: null, mapPressLatLng: null, suppressNextMapClick: false,
-    showGpsLine: true, showImuLine: true, showSmartLine: true, lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
+    showGpsLine: true, showImuLine: true, showSmartLine: true, rotateMap:false, lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
     imuEventCount: 0, imuLastEventAt: null, imuLastMoveAt: null, imuLastAccel: null, imuPermissionHint: "unknown", imuStillCounter: 0,
     suppressFollowUntil: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, deferredPrompt: null, wakeLock: null
   };
@@ -333,7 +335,7 @@
     imuPointIntervalSec:$("imuPointIntervalSec"), imuMaxStepMeters:$("imuMaxStepMeters"), exportFormat:$("exportFormat"), exportBtn:$("exportBtn"),
     exportFullBtn:$("exportFullBtn"), downloadCardBtn:$("downloadCardBtn"), downloadCardBtn2:$("downloadCardBtn2"),
     importFile:$("importFile"), refreshHistoryBtn:$("refreshHistoryBtn"), clearHistoryBtn:$("clearHistoryBtn"),
-    showGpsLine:$("showGpsLine"), showImuLine:$("showImuLine"), showSmartLine:$("showSmartLine"), recordBadge:$("recordBadge"), statTime:$("statTime"), statDistance:$("statDistance"),
+    showGpsLine:$("showGpsLine"), showImuLine:$("showImuLine"), showSmartLine:$("showSmartLine"), rotateMap:$("rotateMap"), recordBadge:$("recordBadge"), statTime:$("statTime"), statDistance:$("statDistance"),
     statSpeed:$("statSpeed"), statAvgSpeed:$("statAvgSpeed"), statMaxSpeed:$("statMaxSpeed"), statPoints:$("statPoints"), statMaxAlt:$("statMaxAlt"),
     statusBox:$("statusBox"), pointsList:$("pointsList"), historyList:$("historyList"), historySearch:$("historySearch"), speedChart:$("speedChart"),
     altChart:$("altChart"), imuDebugText:$("imuDebugText"), installHint:$("installHint"), tabBtns:Array.from(document.querySelectorAll(".tab-btn")),
@@ -577,7 +579,8 @@
     }
   }
 
-  function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; if(el.showSmartLine) el.showSmartLine.checked=state.showSmartLine; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length+"；智慧線 "+(state.showSmartLine?"顯示":"隱藏"):"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
+  function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; if(el.showSmartLine) el.showSmartLine.checked=state.showSmartLine;
+    if(el.rotateMap) el.rotateMap.checked=state.rotateMap; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length+"；智慧線 "+(state.showSmartLine?"顯示":"隱藏"):"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
 
   el.trackName.addEventListener("input", function(){ state.trackName=this.value; saveState(); drawShareCard(); });
   el.placeName.addEventListener("input", function(){ state.placeName=this.value; saveState(); updateUI(false); });
@@ -608,6 +611,7 @@
   el.showGpsLine.addEventListener("change", function(){ state.showGpsLine=this.checked; updateUI(); });
   el.showImuLine.addEventListener("change", function(){ state.showImuLine=this.checked; updateUI(); });
   if(el.showSmartLine) el.showSmartLine.addEventListener("change", function(){ state.showSmartLine=this.checked; updateUI(); });
+  if(el.rotateMap) el.rotateMap.addEventListener("change", function(){ state.rotateMap=this.checked; updateUI(); });
   el.exportFormat.addEventListener("change", function(){ state.exportFormat=this.value; saveState(); });
   el.exportBtn.addEventListener("click", exportTrack);
   el.exportFullBtn.addEventListener("click", exportFullBackup);
