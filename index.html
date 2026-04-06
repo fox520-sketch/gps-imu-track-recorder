@@ -76,8 +76,10 @@
     body.map-fullscreen{overflow:hidden}
     body.map-fullscreen .wrap{max-width:none;padding:0;grid-template-columns:1fr}
     body.map-fullscreen .wrap > .card:first-child{display:none}
-    body.map-fullscreen .wrap > .card:last-child{position:fixed;inset:0;z-index:2500;border-radius:0;border:0}
+    body.map-fullscreen .wrap > .card:last-child{position:fixed;inset:0;z-index:2500;border-radius:0;border:0;padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
     body.map-fullscreen #map{min-height:100vh;height:100vh}
+    body.map-fullscreen .map-fab{top:max(12px, env(safe-area-inset-top, 0px));right:12px;z-index:1600}
+    body.map-fullscreen .compass-wrap{z-index:1600}
     
     .compass-wrap{position:absolute;left:64px;top:12px;z-index:1200;display:flex;flex-direction:column;align-items:center;gap:4px}
     body.map-fullscreen .compass-wrap{left:12px;top:72px}
@@ -342,7 +344,7 @@
     markerModal:$("markerModal"), markerModalTitle:$("markerModalTitle"), markerModalSub:$("markerModalSub"), modalMarkerName:$("modalMarkerName"),
     modalMarkerCategory:$("modalMarkerCategory"), modalMarkerMemo:$("modalMarkerMemo"), markerDeleteBtn:$("markerDeleteBtn"), markerCancelBtn:$("markerCancelBtn"),
     markerSaveBtn:$("markerSaveBtn"), installBtn:$("installBtn"), refreshCacheBtn:$("refreshCacheBtn"), shareAppBtn:$("shareAppBtn"), shareTrackBtn:$("shareTrackBtn"),
-    toggleThemeBtn:$("toggleThemeBtn"), compareSummary:$("compareSummary"), cardCanvas:$("cardCanvas"), redrawCardBtn:$("redrawCardBtn"), mapFullscreenBtn:$("mapFullscreenBtn"), compassArrow:$("compassArrow"), compassLabel:$("compassLabel")
+    toggleThemeBtn:$("toggleThemeBtn"), compareSummary:$("compareSummary"), cardCanvas:$("cardCanvas"), redrawCardBtn:$("redrawCardBtn"), mapFullscreenBtn:$("mapFullscreenBtn"), compassArrow:$("compassArrow"), compassLabel:$("compassLabel"), mapCard:document.querySelector(".wrap > .card:last-child")
   };
 
   function saveState(){
@@ -596,10 +598,37 @@
   function updateStats(){ el.statTime.textContent=formatDuration(state.elapsedMs); el.statDistance.textContent=formatDistance(totalDistance()); el.statSpeed.textContent=formatSpeed(latestPoint()?latestPoint().speed:NaN); el.statAvgSpeed.textContent=formatSpeed(state.elapsedMs>0?totalDistance()/(state.elapsedMs/1000):NaN); el.statMaxSpeed.textContent=formatSpeed(maxSpeed()); el.statPoints.textContent=String(state.points.length); el.statMaxAlt.textContent=formatAlt(maxAlt()); }
   function switchTab(name){ document.querySelectorAll(".tab-panel").forEach(p=>p.classList.remove("active")); document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active")); $("tab-"+name).classList.add("active"); document.querySelector('.tab-btn[data-tab="'+name+'"]').classList.add("active"); setTimeout(()=>state.map.invalidateSize(),50); }
 
-  function toggleMapFullscreen(){
-    const on = document.body.classList.toggle("map-fullscreen");
+  function syncFullscreenButton(){
+    const isCssFullscreen = document.body.classList.contains("map-fullscreen");
+    const isNativeFullscreen = !!document.fullscreenElement;
+    const on = isCssFullscreen || isNativeFullscreen;
     if(el.mapFullscreenBtn) el.mapFullscreenBtn.textContent = on ? "離開全螢幕" : "全螢幕地圖";
-    setTimeout(function(){ if(state.map) state.map.invalidateSize(); }, 80);
+    setTimeout(function(){ if(state.map) state.map.invalidateSize(); }, 100);
+  }
+
+  async function toggleMapFullscreen(){
+    const card = el.mapCard;
+    if(!card){
+      document.body.classList.toggle("map-fullscreen");
+      syncFullscreenButton();
+      return;
+    }
+
+    try{
+      if(document.fullscreenElement){
+        await document.exitFullscreen();
+        document.body.classList.remove("map-fullscreen");
+      }else if(card.requestFullscreen){
+        document.body.classList.add("map-fullscreen");
+        await card.requestFullscreen();
+      }else{
+        document.body.classList.toggle("map-fullscreen");
+      }
+    }catch(e){
+      document.body.classList.toggle("map-fullscreen");
+    }
+
+    syncFullscreenButton();
   }
 
 
@@ -645,7 +674,7 @@
   el.showImuLine.addEventListener("change", function(){ state.showImuLine=this.checked; updateUI(); });
   if(el.showSmartLine) el.showSmartLine.addEventListener("change", function(){ state.showSmartLine=this.checked; updateUI(); });
   if(el.rotateMap) el.rotateMap.addEventListener("change", function(){ state.rotateMap=this.checked; if(!this.checked) state.navigationMode=false; updateUI(); });
-  if(el.navigationMode) el.navigationMode.addEventListener("change", function(){ state.navigationMode=this.checked; if(this.checked) state.rotateMap=true; updateUI(); });
+  if(el.navigationMode) el.navigationMode.addEventListener("change", function(){ state.navigationMode=this.checked; if(this.checked) state.rotateMap=true; state.suppressFollowUntil=0; updateUI(); });
   el.exportFormat.addEventListener("change", function(){ state.exportFormat=this.value; saveState(); });
   el.exportBtn.addEventListener("click", exportTrack);
   el.exportFullBtn.addEventListener("click", exportFullBackup);
@@ -667,6 +696,8 @@
   el.shareTrackBtn.addEventListener("click", shareTrack);
   el.toggleThemeBtn.addEventListener("click", function(){ state.darkModeEnabled=!state.darkModeEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; saveState(); applyTheme(); drawShareCard(); });
   if(el.mapFullscreenBtn) el.mapFullscreenBtn.addEventListener("click", toggleMapFullscreen);
+  document.addEventListener("fullscreenchange", syncFullscreenButton);
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape" && document.body.classList.contains("map-fullscreen") && !document.fullscreenElement){ document.body.classList.remove("map-fullscreen"); syncFullscreenButton(); } });
   window.addEventListener("keydown", function(e){ if(e.key==="Escape"&&el.markerModal.classList.contains("show")) closeMarkerModal(); });
   document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="visible"&&state.wakeLockEnabled&&state.isRecording&&!state.isPaused) ensureWakeLock(); });
 
