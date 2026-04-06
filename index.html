@@ -73,12 +73,19 @@
     
     .map-wrap{position:relative;width:100%;height:100%}
     .map-fab{position:absolute;top:12px;right:12px;z-index:1200;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.18)}
+    .map-locate-fab{top:auto;right:12px;bottom:16px}
+    .compass-wrap.compact .compass-ring{width:44px;height:44px}
+    .compass-wrap.compact .compass-arrow{top:6px;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:16px solid #ef4444;transform-origin:50% 17px}
+    .compass-wrap.compact .compass-arrow::after{left:-5px;top:16px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:13px solid #e2e8f0}
+    .compass-wrap.compact .compass-label{display:none}
+    .compass-wrap{transition:all .2s ease}
     body.map-fullscreen{overflow:hidden}
     body.map-fullscreen .wrap{max-width:none;padding:0;grid-template-columns:1fr}
     body.map-fullscreen .wrap > .card:first-child{display:none}
     body.map-fullscreen .wrap > .card:last-child{position:fixed;inset:0;z-index:2500;border-radius:0;border:0;padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
     body.map-fullscreen #map{min-height:100vh;height:100vh}
     body.map-fullscreen .map-fab{top:max(6px, env(safe-area-inset-top, 0px));right:12px;z-index:1600}
+    body.map-fullscreen .map-locate-fab{top:auto;bottom:max(16px, env(safe-area-inset-bottom, 0px));right:12px}
     body.map-fullscreen .compass-wrap{z-index:1600}
     
     .compass-wrap{position:absolute;left:60px;top:18px;z-index:1200;display:flex;flex-direction:column;align-items:center;gap:4px}
@@ -272,7 +279,7 @@
     <div id="statusBox" class="alert"><strong>尚未開始</strong><span>按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。</span></div>
   </div></div>
 
-  <div class="card"><div class="map-wrap"><div class="compass-wrap"><div class="compass-ring"><div id="compassArrow" class="compass-arrow"></div></div><div id="compassLabel" class="compass-label">N 0°</div></div><button id="mapFullscreenBtn" class="map-fab" type="button">全螢幕地圖</button><div id="map"></div></div></div>
+  <div class="card"><div class="map-wrap"><div id="compassWrap" class="compass-wrap"><div class="compass-ring"><div id="compassArrow" class="compass-arrow"></div></div><div id="compassLabel" class="compass-label">N 0°</div></div><button id="mapFullscreenBtn" class="map-fab" type="button">全螢幕地圖</button><button id="mapLocateBtn" class="map-fab map-locate-fab" type="button">回到目前位置</button><div id="map"></div></div></div>
 </div>
 
 <div id="markerModal" class="modal-backdrop" aria-hidden="true">
@@ -325,7 +332,7 @@
     compareLayer: null, smartShadowLine: null, smartLine: null, placeLabelMarker: null, markerRefs: [], markerLayer: null, mapPressTimer: null, mapPressLatLng: null, suppressNextMapClick: false,
     showGpsLine: true, showImuLine: true, showSmartLine: true, rotateMap:false, navigationMode:false, lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
     imuEventCount: 0, imuLastEventAt: null, imuLastMoveAt: null, imuLastAccel: null, imuPermissionHint: "unknown", imuStillCounter: 0,
-    suppressFollowUntil: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, reopenFullscreenAfterModal: false, deferredPrompt: null, wakeLock: null
+    suppressFollowUntil: 0, smoothedHeading: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, reopenFullscreenAfterModal: false, deferredPrompt: null, wakeLock: null
   };
 
   const el = {
@@ -344,7 +351,7 @@
     markerModal:$("markerModal"), markerModalTitle:$("markerModalTitle"), markerModalSub:$("markerModalSub"), modalMarkerName:$("modalMarkerName"),
     modalMarkerCategory:$("modalMarkerCategory"), modalMarkerMemo:$("modalMarkerMemo"), markerDeleteBtn:$("markerDeleteBtn"), markerCancelBtn:$("markerCancelBtn"),
     markerSaveBtn:$("markerSaveBtn"), installBtn:$("installBtn"), refreshCacheBtn:$("refreshCacheBtn"), shareAppBtn:$("shareAppBtn"), shareTrackBtn:$("shareTrackBtn"),
-    toggleThemeBtn:$("toggleThemeBtn"), compareSummary:$("compareSummary"), cardCanvas:$("cardCanvas"), redrawCardBtn:$("redrawCardBtn"), mapFullscreenBtn:$("mapFullscreenBtn"), compassArrow:$("compassArrow"), compassLabel:$("compassLabel"), mapCard:document.querySelector(".wrap > .card:last-child")
+    toggleThemeBtn:$("toggleThemeBtn"), compareSummary:$("compareSummary"), cardCanvas:$("cardCanvas"), redrawCardBtn:$("redrawCardBtn"), mapFullscreenBtn:$("mapFullscreenBtn"), mapLocateBtn:$("mapLocateBtn"), compassWrap:$("compassWrap"), compassArrow:$("compassArrow"), compassLabel:$("compassLabel"), mapCard:document.querySelector(".wrap > .card:last-child")
   };
 
   function saveState(){
@@ -482,6 +489,32 @@
     state.placeLabelMarker=L.marker([25.033,121.5654], { interactive:true, icon:L.divIcon({ className:"place-label-wrapper", html:"", iconSize:[220,32], iconAnchor:[10,34] }) }).addTo(state.map);
     setTimeout(()=>state.map.invalidateSize(),200);
   }
+
+  function getSmoothedHeading(){
+    const raw = getLatestHeading();
+    const current = Number.isFinite(state.smoothedHeading) ? state.smoothedHeading : raw;
+    let delta = raw - current;
+    while(delta > 180) delta -= 360;
+    while(delta < -180) delta += 360;
+
+    const latest = latestPoint();
+    let speedKmh = 0;
+    if(latest && Number.isFinite(latest.speed)) speedKmh = latest.speed * 3.6;
+
+    const alpha = speedKmh < 3 ? 0.10 : speedKmh < 10 ? 0.18 : 0.28;
+    const next = current + delta * alpha;
+    state.smoothedHeading = (next % 360 + 360) % 360;
+    return state.smoothedHeading;
+  }
+
+  function updateCompassCompact(){
+    const latest = latestPoint();
+    let speedKmh = 0;
+    if(latest && Number.isFinite(latest.speed)) speedKmh = latest.speed * 3.6;
+    const compact = speedKmh > 6 || state.navigationMode || document.body.classList.contains("map-fullscreen");
+    if(el.compassWrap) el.compassWrap.classList.toggle("compact", compact);
+  }
+
   function getLatestHeading(){
     const h = Number(state.orientationHeading);
     return Number.isFinite(h) ? ((h % 360) + 360) % 360 : 0;
@@ -491,7 +524,7 @@
     const mapEl = document.getElementById("map");
     if(!mapEl) return;
     if(state.rotateMap || state.navigationMode){
-      const heading = getLatestHeading();
+      const heading = getSmoothedHeading();
       mapEl.style.transform = "rotate(" + (-heading) + "deg)";
     }else{
       mapEl.style.transform = "rotate(0deg)";
@@ -502,7 +535,7 @@
     if(!state.followMap || Date.now()<state.suppressFollowUntil || !visibleAll.length) return;
     const latest = visibleAll[visibleAll.length-1];
     if(state.navigationMode && state.map){
-      const heading = getLatestHeading();
+      const heading = getSmoothedHeading();
       const size = state.map.getSize();
       const centerPoint = state.map.latLngToContainerPoint(latest);
       const rad = heading * Math.PI / 180;
@@ -700,7 +733,7 @@
   function clearCurrent(){ stopRecording(); state.points=[]; state.gpsPoints=[]; state.imuPoints=[]; state.trackName="track-"+new Date().toISOString().slice(0,16).replace(/[:T]/g,"-"); state.placeName=""; state.elapsedMs=0; state.lastGpsFix=null; updateUI(); }
   function calibrateImu(){ const gpsRef=state.lastGpsFix||(state.gpsPoints.length?state.gpsPoints[state.gpsPoints.length-1]:null), imuRef=state.imuPoints.length?state.imuPoints[state.imuPoints.length-1]:null; if(!gpsRef){ state.error="需要先有 GPS 定位點才能校準。"; updateUI(); return; } if(!imuRef){ state.error="需要先有 IMU 點才能校準。"; updateUI(); return; } const step=Math.max(0.05,Math.min(1,Number(state.imuCalibrationStep)||0.35)), newLat=imuRef.lat+(gpsRef.lat-imuRef.lat)*step, newLng=imuRef.lng+(gpsRef.lng-imuRef.lng)*step; addPoint({ lat:newLat,lng:newLng,accuracy:null,altitude:null,speed:0,heading:state.orientationHeading,timestamp:Date.now(),sourceMode:"imu",placeName:state.placeName }); if(state.imuSession){ state.imuSession.anchor={ lat:newLat,lng:newLng }; state.imuSession.posNorth=0; state.imuSession.posEast=0; state.imuSession.velocityNorth=0; state.imuSession.velocityEast=0; state.imuSession.pendingNorth=0; state.imuSession.pendingEast=0; state.imuSession.lastEmitLatLng={ lat:newLat,lng:newLng }; } state.error=""; saveState(); updateUI(); }
   function updateCurrentPosition(){ if(!("geolocation" in navigator)) return; navigator.geolocation.getCurrentPosition(addGpsPosition, err=>{ state.error=err.message||"無法更新目前位置"; updateUI(); }, { enableHighAccuracy:true, maximumAge:0, timeout:15000 }); }
-  function centerToCurrent(){ const p=latestPoint(); state.suppressFollowUntil=0; if(p){ state.map.setView([p.lat,p.lng],18); maybeFollowMap([[p.lat,p.lng]]); } else if(state.lastGpsFix){ state.map.setView([state.lastGpsFix.lat,state.lastGpsFix.lng],18); maybeFollowMap([[state.lastGpsFix.lat,state.lastGpsFix.lng]]); } }
+  function centerToCurrent(){ const p=latestPoint(); state.suppressFollowUntil=0; if(p){ state.map.setView([p.lat,p.lng],18); setTimeout(function(){ maybeFollowMap([[p.lat,p.lng]]); }, 80); } else if(state.lastGpsFix){ state.map.setView([state.lastGpsFix.lat,state.lastGpsFix.lng],18); setTimeout(function(){ maybeFollowMap([[state.lastGpsFix.lat,state.lastGpsFix.lng]]); }, 80); } }
   function applyPlaceNameToCurrent(){ const name=(state.placeName||"").trim(), latest=latestPoint(); if(!latest){ state.error="目前還沒有位置點可套用名稱。"; updateUI(); return; } latest.placeName=name; state.gpsPoints.forEach(p=>{ if(p.timestamp===latest.timestamp) p.placeName=name; }); state.imuPoints.forEach(p=>{ if(p.timestamp===latest.timestamp) p.placeName=name; }); state.points=state.gpsPoints.concat(state.imuPoints).sort((a,b)=>a.timestamp-b.timestamp); state.error=""; saveState(); renderMap(); updateUI(false); }
   function exportText(filename,content,mime){ const blob=new Blob([content],{ type:mime }),url=URL.createObjectURL(blob),a=document.createElement("a"); a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url); }
   function exportFullBackup(){ exportText((state.trackName||"track")+"_backup.json", JSON.stringify({ app:"gps_imu_track_recorder", version:6, trackName:state.trackName, placeName:state.placeName, points:state.points, gpsPoints:state.gpsPoints, imuPoints:state.imuPoints, userMarkers:state.userMarkers, settings:{ imuDistanceMultiplier: state.imuDistanceMultiplier } }, null, 2), "application/json;charset=utf-8"); }
@@ -749,12 +782,13 @@
 
 
   function updateCompass(){
-    const heading = Number.isFinite(state.orientationHeading) ? ((state.orientationHeading % 360) + 360) % 360 : 0;
+    const heading = getSmoothedHeading();
     if(el.compassArrow) el.compassArrow.style.transform = "translateX(-50%) rotate(" + heading + "deg)";
     if(el.compassLabel){
       const rounded = Math.round(heading);
       el.compassLabel.textContent = "N " + rounded + "°";
     }
+    updateCompassCompact();
   }
 
   function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; if(el.showSmartLine) el.showSmartLine.checked=state.showSmartLine;
@@ -812,6 +846,7 @@
   el.shareTrackBtn.addEventListener("click", shareTrack);
   el.toggleThemeBtn.addEventListener("click", function(){ state.darkModeEnabled=!state.darkModeEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; saveState(); applyTheme(); drawShareCard(); });
   if(el.mapFullscreenBtn) el.mapFullscreenBtn.addEventListener("click", toggleMapFullscreen);
+  if(el.mapLocateBtn) el.mapLocateBtn.addEventListener("click", centerToCurrent);
   document.addEventListener("fullscreenchange", syncFullscreenButton);
   document.addEventListener("keydown", function(e){ if(e.key==="Escape" && document.body.classList.contains("map-fullscreen") && !document.fullscreenElement){ document.body.classList.remove("map-fullscreen"); syncFullscreenButton(); } });
   window.addEventListener("keydown", function(e){ if(e.key==="Escape"&&el.markerModal.classList.contains("show")) closeMarkerModal(); });
