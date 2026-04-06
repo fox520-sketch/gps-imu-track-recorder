@@ -167,7 +167,8 @@
     <div class="group"><div class="row"><div><label style="margin:0">顯示 GPS 軌跡</label></div><input id="showGpsLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">顯示陀螺儀軌跡</label></div><input id="showImuLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">顯示智慧軌跡</label><div class="mini">白色主線，融合 GPS / IMU 並做平滑修正</div></div><input id="showSmartLine" class="switch" type="checkbox" checked></div></div>
-    <div class="group"><label for="rotateMode">旋轉模式選擇</label><select id="rotateMode" class="select"><option value="off">關閉</option><option value="stable">穩定模式</option><option value="navigation">導航模式</option><option value="compass">指南針模式</option></select><div class="mini">穩定模式：低速較穩｜導航模式：導航視角｜指南針模式：原地也會轉</div></div>
+    <div class="group"><label for="rotateMode">旋轉模式選擇</label><select id="rotateMode" class="select"><option value="off">關閉</option><option value="stable">穩定模式</option><option value="navigation">導航模式</option><option value="compass">指南針模式</option><option value="manual">手動旋轉模式</option></select><div class="mini">穩定模式：低速較穩｜導航模式：導航視角｜指南針模式：原地也會轉｜手動旋轉：自己調整角度</div></div>
+      <div class="group"><label for="manualRotateAngle">手動旋轉角度</label><input id="manualRotateAngle" class="input" type="range" min="0" max="359" step="1" value="0"><div class="mini">目前角度：<span id="manualRotateAngleText">0°</span></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">導航模式</label><div class="mini">位置固定在畫面下方，地圖跟隨前進方向</div></div><input id="navigationMode" class="switch" type="checkbox"></div></div>
 
     <div class="debug"><strong>IMU 偵測狀態</strong><div id="imuDebugText">尚未啟動陀螺儀。</div></div>
@@ -343,7 +344,7 @@
     exportFormat: "gpx", markerCategory: "default", startedAt: null, elapsedMs: 0, pausedAccumulatedMs: 0, pauseStartedAt: null,
     watchId: null, timer: null, map: null, marker: null, gpsLine: null, imuLine: null, gpsPointLayer: null, imuPointLayer: null,
     compareLayer: null, smartShadowLine: null, smartLine: null, placeLabelMarker: null, markerRefs: [], markerLayer: null, mapPressTimer: null, mapPressLatLng: null, suppressNextMapClick: false,
-    showGpsLine: true, showImuLine: true, showSmartLine: true, rotateMap:false, navigationMode:false, rotateMode:"off", lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
+    showGpsLine: true, showImuLine: true, showSmartLine: true, rotateMap:false, navigationMode:false, rotateMode:"off", manualRotateAngle:0, lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
     imuEventCount: 0, imuLastEventAt: null, imuLastMoveAt: null, imuLastAccel: null, imuPermissionHint: "unknown", imuStillCounter: 0,
     suppressFollowUntil: 0, smoothedHeading: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, reopenFullscreenAfterModal: false, deferredPrompt: null, wakeLock: null
   };
@@ -357,7 +358,7 @@
     imuPointIntervalSec:$("imuPointIntervalSec"), imuMaxStepMeters:$("imuMaxStepMeters"), fusionGpsWeight:$("fusionGpsWeight"), fusionDriftLockMeters:$("fusionDriftLockMeters"), fusionAutoCalibSec:$("fusionAutoCalibSec"), gpsAccuracyLimit:$("gpsAccuracyLimit"), autoZoomNav:$("autoZoomNav"), exportFormat:$("exportFormat"), exportBtn:$("exportBtn"),
     exportFullBtn:$("exportFullBtn"), downloadCardBtn:$("downloadCardBtn"), downloadCardBtn2:$("downloadCardBtn2"),
     importFile:$("importFile"), refreshHistoryBtn:$("refreshHistoryBtn"), clearHistoryBtn:$("clearHistoryBtn"),
-    showGpsLine:$("showGpsLine"), showImuLine:$("showImuLine"), showSmartLine:$("showSmartLine"), rotateMode:$("rotateMode"), navigationMode:$("navigationMode"), recordBadge:$("recordBadge"), statTime:$("statTime"), statDistance:$("statDistance"),
+    showGpsLine:$("showGpsLine"), showImuLine:$("showImuLine"), showSmartLine:$("showSmartLine"), rotateMode:$("rotateMode"), manualRotateAngle:$("manualRotateAngle"), manualRotateAngleText:$("manualRotateAngleText"), navigationMode:$("navigationMode"), recordBadge:$("recordBadge"), statTime:$("statTime"), statDistance:$("statDistance"),
     statSpeed:$("statSpeed"), statAvgSpeed:$("statAvgSpeed"), statMaxSpeed:$("statMaxSpeed"), statPoints:$("statPoints"), statMaxAlt:$("statMaxAlt"),
     statusBox:$("statusBox"), pointsList:$("pointsList"), historyList:$("historyList"), historySearch:$("historySearch"), speedChart:$("speedChart"),
     altChart:$("altChart"), imuDebugText:$("imuDebugText"), installHint:$("installHint"), tabBtns:Array.from(document.querySelectorAll(".tab-btn")),
@@ -374,7 +375,7 @@
       followMap: state.followMap, highAccuracy: state.highAccuracy, wakeLockEnabled: state.wakeLockEnabled, darkModeEnabled: state.darkModeEnabled,
       minDistance: state.minDistance, imuScale: state.imuScale, imuDistanceMultiplier: state.imuDistanceMultiplier, imuFilterAlpha: state.imuFilterAlpha, imuCalibrationStep: state.imuCalibrationStep,
       imuPointIntervalSec: state.imuPointIntervalSec, imuMaxStepMeters: state.imuMaxStepMeters, fusionGpsWeight: state.fusionGpsWeight, fusionDriftLockMeters: state.fusionDriftLockMeters, fusionAutoCalibSec: state.fusionAutoCalibSec, gpsAccuracyLimit: state.gpsAccuracyLimit, autoZoomNav: state.autoZoomNav, exportFormat: state.exportFormat,
-      markerCategory: state.markerCategory, showGpsLine: state.showGpsLine, showImuLine: state.showImuLine, showSmartLine: state.showSmartLine, rotateMap: state.rotateMap, navigationMode: state.navigationMode, rotateMode: state.rotateMode
+      markerCategory: state.markerCategory, showGpsLine: state.showGpsLine, showImuLine: state.showImuLine, showSmartLine: state.showSmartLine, rotateMap: state.rotateMap, navigationMode: state.navigationMode, rotateMode: state.rotateMode, manualRotateAngle: state.manualRotateAngle
     }));
   }
   function loadState(){ try{ const raw=localStorage.getItem(STORAGE_KEY); if(raw) Object.assign(state, JSON.parse(raw)); }catch(e){} }
@@ -523,6 +524,7 @@
   function getRotateModeHeading(){
     const mode = state.rotateMode || "off";
     if(mode === "compass") return getLatestHeading();
+    if(mode === "manual") return Number(state.manualRotateAngle) || 0;
     return getSmoothedHeading();
   }
 
@@ -919,7 +921,7 @@
   }
 
   function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); if(el.fusionGpsWeight) el.fusionGpsWeight.value=String(state.fusionGpsWeight); if(el.fusionDriftLockMeters) el.fusionDriftLockMeters.value=String(state.fusionDriftLockMeters); if(el.fusionAutoCalibSec) el.fusionAutoCalibSec.value=String(state.fusionAutoCalibSec); if(el.gpsAccuracyLimit) el.gpsAccuracyLimit.value=String(state.gpsAccuracyLimit); if(el.autoZoomNav) el.autoZoomNav.checked=!!state.autoZoomNav; el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; if(el.showSmartLine) el.showSmartLine.checked=state.showSmartLine;
-    if(el.rotateMap) el.rotateMap.checked=state.rotateMap; if(el.navigationMode) el.navigationMode.checked=state.navigationMode; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length+"；智慧線 "+(state.showSmartLine?"顯示":"隱藏")+"；融合權重 "+(Number(state.fusionGpsWeight||0.65).toFixed(2))+"；GPS門檻 "+String(Number(state.gpsAccuracyLimit||50).toFixed(0))+"m；旋轉模式 "+String(state.rotateMode||"off"):"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
+    if(el.rotateMap) el.rotateMap.checked=state.rotateMap; if(el.navigationMode) el.navigationMode.checked=state.navigationMode; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length+"；智慧線 "+(state.showSmartLine?"顯示":"隱藏")+"；融合權重 "+(Number(state.fusionGpsWeight||0.65).toFixed(2))+"；GPS門檻 "+String(Number(state.gpsAccuracyLimit||50).toFixed(0))+"m；旋轉模式 "+String(state.rotateMode||"off") + ((state.rotateMode==="manual") ? "（"+String(Math.round(Number(state.manualRotateAngle)||0))+"°）" : ""):"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
 
   el.trackName.addEventListener("input", function(){ state.trackName=this.value; saveState(); drawShareCard(); });
   el.placeName.addEventListener("input", function(){ state.placeName=this.value; saveState(); updateUI(false); });
@@ -960,8 +962,13 @@
     syncRotateModeFlags();
     saveState();
     updateUI();
-    const labels = {off:"已關閉旋轉", stable:"已切到穩定模式", navigation:"已切到導航模式", compass:"已切到指南針模式"};
+    const labels = {off:"已關閉旋轉", stable:"已切到穩定模式", navigation:"已切到導航模式", compass:"已切到指南針模式", manual:"已切到手動旋轉模式"};
     showToast(labels[state.rotateMode] || "已切換旋轉模式");
+  });
+  if(el.manualRotateAngle) el.manualRotateAngle.addEventListener("input", function(){
+    state.manualRotateAngle = Math.max(0, Math.min(359, Number(this.value)||0));
+    saveState();
+    updateUI(false);
   });
   if(el.navigationMode) el.navigationMode.addEventListener("change", function(){ state.navigationMode=this.checked; if(this.checked) state.rotateMap=true; state.suppressFollowUntil=0; updateUI(); showToast(state.navigationMode ? "已開啟導航模式" : "已關閉導航模式"); });
   el.exportFormat.addEventListener("change", function(){ state.exportFormat=this.value; saveState(); });
@@ -987,13 +994,13 @@
   if(el.mapFullscreenBtn) el.mapFullscreenBtn.addEventListener("click", toggleMapFullscreen);
   if(el.mapLocateBtn) el.mapLocateBtn.addEventListener("click", function(){ centerToCurrent(); showToast("已回到目前位置"); });
   if(el.mapRotateBtn) el.mapRotateBtn.addEventListener("click", function(){
-    const order = ["off","stable","navigation","compass"];
+    const order = ["off","stable","navigation","compass","manual"];
     const idx = order.indexOf(state.rotateMode || "off");
     state.rotateMode = order[(idx + 1) % order.length];
     syncRotateModeFlags();
     saveState();
     updateUI();
-    const labels = {off:"已關閉旋轉", stable:"已切到穩定模式", navigation:"已切到導航模式", compass:"已切到指南針模式"};
+    const labels = {off:"已關閉旋轉", stable:"已切到穩定模式", navigation:"已切到導航模式", compass:"已切到指南針模式", manual:"已切到手動旋轉模式"};
     showToast(labels[state.rotateMode] || "已切換旋轉模式");
   });
   document.addEventListener("fullscreenchange", syncFullscreenButton);
