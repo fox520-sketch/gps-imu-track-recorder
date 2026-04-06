@@ -58,6 +58,12 @@
     .point,.history-item{border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px;font-size:13px;line-height:1.5}
     .chart{border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--card)}
     #map{width:100%;min-height:76vh;height:100%;transform-origin:center center}
+    .map-rotate-stage{position:absolute;inset:0;transform-origin:50% 50%;z-index:200}
+    .map-rotate-stage .leaflet-map-pane{transform-origin:50% 50%!important}
+    #map .leaflet-control-container{z-index:900}
+    #map .leaflet-control-container,
+    #map .leaflet-top,
+    #map .leaflet-bottom{pointer-events:auto}
     .legend .dot{width:12px;height:12px;border-radius:999px;display:inline-block}.dot.gps{background:#2563eb}.dot.imu{background:#7c3aed}.dot.smart{background:#ffffff;border:1px solid #0f172a}
     .marker-pin{width:16px;height:16px;border-radius:999px;border:2px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.25)}
     .marker-chip{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;margin-bottom:6px;color:#fff}
@@ -342,7 +348,7 @@
     followMap: true, highAccuracy: true, wakeLockEnabled: true, darkModeEnabled: false,
     minDistance: 5, imuScale: 1, imuDistanceMultiplier: 1, imuFilterAlpha: 0.96, imuCalibrationStep: 0.35, imuPointIntervalSec: 10, imuMaxStepMeters: 1,
     exportFormat: "gpx", markerCategory: "default", startedAt: null, elapsedMs: 0, pausedAccumulatedMs: 0, pauseStartedAt: null,
-    watchId: null, timer: null, map: null, marker: null, gpsLine: null, imuLine: null, gpsPointLayer: null, imuPointLayer: null,
+    watchId: null, timer: null, map: null, rotateStage: null, marker: null, gpsLine: null, imuLine: null, gpsPointLayer: null, imuPointLayer: null,
     compareLayer: null, smartShadowLine: null, smartLine: null, placeLabelMarker: null, markerRefs: [], markerLayer: null, mapPressTimer: null, mapPressLatLng: null, suppressNextMapClick: false,
     showGpsLine: true, showImuLine: true, showSmartLine: true, rotateMap:false, navigationMode:false, rotateMode:"off", manualRotateAngle:0, lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
     imuEventCount: 0, imuLastEventAt: null, imuLastMoveAt: null, imuLastAccel: null, imuPermissionHint: "unknown", imuStillCounter: 0,
@@ -511,7 +517,7 @@
     state.marker=L.marker([25.033,121.5654]).addTo(state.map);
     state.markerLayer=L.layerGroup().addTo(state.map);
     state.placeLabelMarker=L.marker([25.033,121.5654], { interactive:true, icon:L.divIcon({ className:"place-label-wrapper", html:"", iconSize:[220,32], iconAnchor:[10,34] }) }).addTo(state.map);
-    setTimeout(()=>state.map.invalidateSize(),200);
+    setTimeout(function(){ setupCustomRotateStage(); if(state.map) state.map.invalidateSize(); applyMapRotation(); }, 200);
   }
 
 
@@ -571,22 +577,38 @@
     return Number.isFinite(h) ? ((h % 360) + 360) % 360 : 0;
   }
 
+
+  function setupCustomRotateStage(){
+    const mapEl = document.getElementById("map");
+    if(!mapEl) return;
+
+    const mapPane = mapEl.querySelector(".leaflet-map-pane");
+    if(!mapPane) return;
+
+    let stage = mapEl.querySelector(".map-rotate-stage");
+    if(!stage){
+      stage = document.createElement("div");
+      stage.className = "map-rotate-stage";
+      mapEl.appendChild(stage);
+    }
+
+    if(mapPane.parentElement !== stage){
+      stage.appendChild(mapPane);
+    }
+
+    state.rotateStage = stage;
+  }
+
   function applyMapRotation(){
     const mapEl = document.getElementById("map");
     if(!mapEl) return;
 
-    const heading = ((state.rotateMode || "off") !== "off") ? getRotateModeHeading() : 0;
-    const rotate = " rotate(" + (-heading) + "deg)";
-    const paneSelectors = [".leaflet-tile-pane",".leaflet-overlay-pane",".leaflet-shadow-pane",".leaflet-marker-pane",".leaflet-tooltip-pane",".leaflet-popup-pane"];
+    setupCustomRotateStage();
+    const stage = state.rotateStage || mapEl.querySelector(".map-rotate-stage");
+    if(!stage) return;
 
-    paneSelectors.forEach(function(sel){
-      const pane = mapEl.querySelector(sel);
-      if(!pane) return;
-      pane.style.transformOrigin = "50% 50%";
-      const current = pane.style.transform || "";
-      const cleaned = current.replace(/ rotate\([^)]*\)/g, "");
-      pane.style.transform = cleaned + rotate;
-    });
+    const heading = ((state.rotateMode || "off") !== "off") ? getRotateModeHeading() : 0;
+    stage.style.transform = "rotate(" + (-heading) + "deg)";
   }
 
 
@@ -804,7 +826,7 @@
     }else if(state.map.hasLayer(state.placeLabelMarker)) state.map.removeLayer(state.placeLabelMarker);
     renderCompareOverlays();
     maybeFollowMap([].concat(state.showGpsLine?gpsLatLngs:[]).concat(state.showImuLine?imuLatLngs:[]).concat(state.showSmartLine?smartLatLngs:[]));
-    setTimeout(()=>state.map.invalidateSize(),50);
+    setTimeout(function(){ setupCustomRotateStage(); if(state.map) state.map.invalidateSize(); applyMapRotation(); },50);
   }
 
 
@@ -901,7 +923,7 @@
     const isNativeFullscreen = !!document.fullscreenElement;
     const on = isCssFullscreen || isNativeFullscreen;
     if(el.mapFullscreenBtn) el.mapFullscreenBtn.textContent = on ? "離開全螢幕" : "全螢幕地圖";
-    setTimeout(function(){ if(state.map) state.map.invalidateSize(); }, 100);
+    setTimeout(function(){ setupCustomRotateStage(); if(state.map) state.map.invalidateSize(); applyMapRotation(); }, 100);
   }
 
   async function toggleMapFullscreen(){
