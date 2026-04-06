@@ -57,7 +57,7 @@
     .points,.history{max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:14px;padding:10px;background:var(--card)}
     .point,.history-item{border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px;font-size:13px;line-height:1.5}
     .chart{border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--card)}
-    #map{position:absolute;left:-30%;top:-30%;width:160%;min-height:0;height:160%;transform-origin:center center;transition:transform .12s linear}
+    #map{position:absolute;left:-20%;top:-20%;width:140%;min-height:0;height:140%;transform-origin:center center;transition:transform .12s linear}
     #map .leaflet-control-container{z-index:900;transform-origin:center center}
     #map .leaflet-control-container,
     #map .leaflet-top,
@@ -75,7 +75,8 @@
     .hidden{display:none!important}
     #cardCanvas{width:100%;max-width:420px;border:1px solid var(--border);border-radius:16px;background:#fff}
     
-    .map-wrap{position:relative;width:100%;height:100%;overflow:hidden}
+    .map-card-body{position:relative;min-height:76vh;height:100%}
+    .map-wrap{position:relative;width:100%;height:100%;min-height:76vh;overflow:hidden}
     .map-fab{position:absolute;top:12px;right:12px;z-index:1200;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.18)}
     .map-locate-fab{top:auto;right:12px;bottom:16px}
     .map-mini-fab{right:128px;padding:10px 12px}
@@ -93,7 +94,8 @@
     body.map-fullscreen .wrap{max-width:none;padding:0;grid-template-columns:1fr}
     body.map-fullscreen .wrap > .card:first-child{display:none}
     body.map-fullscreen .wrap > .card:last-child{position:fixed;inset:0;z-index:2500;border-radius:0;border:0;padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
-    body.map-fullscreen #map{left:-30%;top:-30%;width:160%;height:160%;min-height:0}
+    body.map-fullscreen .map-card-body, body.map-fullscreen .map-wrap{min-height:100vh;height:100vh}
+    body.map-fullscreen #map{left:-20%;top:-20%;width:140%;height:140%;min-height:0}
     body.map-fullscreen .map-fab{z-index:1600}
     body.map-fullscreen .map-locate-fab{top:auto;right:12px}
     body.map-fullscreen .compass-wrap{z-index:1600}
@@ -105,7 +107,7 @@
     .compass-arrow{position:absolute;left:50%;top:8px;width:0;height:0;transform:translateX(-50%);border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:22px solid #ef4444;transform-origin:50% 23px}
     .compass-arrow::after{content:"";position:absolute;left:-7px;top:22px;border-left:7px solid transparent;border-right:7px solid transparent;border-top:18px solid #e2e8f0}
     .compass-label{font-size:11px;font-weight:700;color:#fff;background:rgba(15,23,42,.5);padding:2px 8px;border-radius:999px}
-    @media (max-width:1024px){.wrap{grid-template-columns:1fr}#map{left:-30%;top:-30%;width:160%;height:160%;min-height:0}}
+    @media (max-width:1024px){.wrap{grid-template-columns:1fr}.map-card-body,.map-wrap{min-height:52vh}#map{left:-20%;top:-20%;width:140%;height:140%;min-height:0}}
 
 
   </style>
@@ -295,7 +297,7 @@
     <div id="statusBox" class="alert"><strong>尚未開始</strong><span>按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。</span></div>
   </div></div>
 
-  <div class="card"><div class="map-wrap"><div id="compassWrap" class="compass-wrap"><div class="compass-ring"><div id="compassArrow" class="compass-arrow"></div></div><div id="compassLabel" class="compass-label">N 0°</div></div><div class="map-tools-top"><button id="mapRotateBtn" class="map-fab map-mini-fab" type="button">旋轉</button><button id="mapFullscreenBtn" class="map-fab" type="button">全螢幕地圖</button></div><div class="map-tools-bottom"><button id="mapLocateBtn" class="map-fab map-locate-fab" type="button">回到目前位置</button></div><div id="map"></div></div></div>
+  <div class="card"><div class="map-card-body"><div class="map-wrap"><div id="compassWrap" class="compass-wrap"><div class="compass-ring"><div id="compassArrow" class="compass-arrow"></div></div><div id="compassLabel" class="compass-label">N 0°</div></div><div class="map-tools-top"><button id="mapRotateBtn" class="map-fab map-mini-fab" type="button">旋轉</button><button id="mapFullscreenBtn" class="map-fab" type="button">全螢幕地圖</button></div><div class="map-tools-bottom"><button id="mapLocateBtn" class="map-fab map-locate-fab" type="button">回到目前位置</button></div><div id="map"></div></div></div></div>
 </div>
 
 <div id="toast" style="position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:7000;background:rgba(15,23,42,.92);color:#fff;padding:10px 14px;border-radius:999px;font-size:13px;font-weight:700;display:none;box-shadow:0 10px 24px rgba(15,23,42,.22)"></div>
@@ -503,7 +505,7 @@
 
   function initMap(){
     state.map=L.map($("map"), { zoomControl:true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:"&copy; OpenStreetMap contributors", maxZoom:19, keepBuffer: 12, updateWhenIdle: false, updateWhenZooming: true }).addTo(state.map);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:"&copy; OpenStreetMap contributors", maxZoom:19, keepBuffer: 8, updateWhenIdle: false, updateWhenZooming: true }).addTo(state.map);
     state.map.setView([25.033,121.5654],16);
     state.gpsLine=L.polyline([], { color:"#2563eb", weight:5, opacity:1 }).addTo(state.map);
     state.imuLine=L.polyline([], { color:"#7c3aed", weight:9, opacity:1, dashArray:"12 8" }).addTo(state.map);
@@ -584,7 +586,7 @@
 
     const rad = Math.abs((heading % 180) * Math.PI / 180);
     const norm = Math.min(rad, Math.PI - rad);
-    const extraScale = 1.28 + Math.sin(norm) * 0.14;
+    const extraScale = 1.16 + Math.sin(norm) * 0.08;
 
     mapEl.style.transform = "rotate(" + (-heading) + "deg) scale(" + extraScale.toFixed(3) + ")";
 
