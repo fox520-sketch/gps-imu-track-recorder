@@ -346,7 +346,7 @@
     compareLayer: null, smartShadowLine: null, smartLine: null, placeLabelMarker: null, markerRefs: [], markerLayer: null, mapPressTimer: null, mapPressLatLng: null, suppressNextMapClick: false,
     showGpsLine: true, showImuLine: true, showSmartLine: true, rotateMap:false, navigationMode:false, rotateMode:"off", manualRotateAngle:0, lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
     imuEventCount: 0, imuLastEventAt: null, imuLastMoveAt: null, imuLastAccel: null, imuPermissionHint: "unknown", imuStillCounter: 0,
-    suppressFollowUntil: 0, smoothedHeading: 0, gestureRotationStart: null, gestureStartAngle: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, reopenFullscreenAfterModal: false, deferredPrompt: null, wakeLock: null
+    suppressFollowUntil: 0, smoothedHeading: 0, gestureRotationStart: null, gestureStartAngle: 0, gestureActive: false, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, reopenFullscreenAfterModal: false, deferredPrompt: null, wakeLock: null
   };
 
   const el = {
@@ -577,32 +577,15 @@
 
     const heading = ((state.rotateMode || "off") !== "off") ? getRotateModeHeading() : 0;
     const rotate = " rotate(" + (-heading) + "deg)";
-
-    const paneSelectors = [
-      ".leaflet-tile-pane",
-      ".leaflet-overlay-pane",
-      ".leaflet-shadow-pane",
-      ".leaflet-marker-pane",
-      ".leaflet-tooltip-pane",
-      ".leaflet-popup-pane"
-    ];
+    const paneSelectors = [".leaflet-tile-pane",".leaflet-overlay-pane",".leaflet-shadow-pane",".leaflet-marker-pane",".leaflet-tooltip-pane",".leaflet-popup-pane"];
 
     paneSelectors.forEach(function(sel){
       const pane = mapEl.querySelector(sel);
       if(!pane) return;
       pane.style.transformOrigin = "50% 50%";
-
-      if(pane._leaflet_pos){
-        const pos = pane._leaflet_pos;
-        pane.style.transform = "translate3d(" + pos.x + "px," + pos.y + "px,0px)" + rotate;
-      }else{
-        const current = pane.style.transform || "";
-        if(current.includes("translate3d(")){
-          pane.style.transform = current.replace(/ rotate\([^)]*\)/g, "") + rotate;
-        }else{
-          pane.style.transform = rotate;
-        }
-      }
+      const current = pane.style.transform || "";
+      const cleaned = current.replace(/ rotate\([^)]*\)/g, "");
+      pane.style.transform = cleaned + rotate;
     });
   }
 
@@ -1061,50 +1044,95 @@
     return x;
   }
 
+
+  function beginManualGesture(){
+    state.gestureActive = true;
+    try{
+      if(state.map && state.map.dragging) state.map.dragging.disable();
+      if(state.map && state.map.touchZoom) state.map.touchZoom.disable();
+      if(state.map && state.map.doubleClickZoom) state.map.doubleClickZoom.disable();
+      if(state.map && state.map.scrollWheelZoom) state.map.scrollWheelZoom.disable();
+      if(state.map && state.map.boxZoom) state.map.boxZoom.disable();
+      if(state.map && state.map.keyboard) state.map.keyboard.disable();
+    }catch(e){}
+  }
+
+  function endManualGesture(){
+    state.gestureActive = false;
+    try{
+      if(state.map && state.map.dragging) state.map.dragging.enable();
+      if(state.map && state.map.touchZoom) state.map.touchZoom.enable();
+      if(state.map && state.map.doubleClickZoom) state.map.doubleClickZoom.enable();
+      if(state.map && state.map.scrollWheelZoom) state.map.scrollWheelZoom.enable();
+      if(state.map && state.map.boxZoom) state.map.boxZoom.enable();
+      if(state.map && state.map.keyboard) state.map.keyboard.enable();
+    }catch(e){}
+  }
+
   function clearMapPressTimer(){ if(state.mapPressTimer){ clearTimeout(state.mapPressTimer); state.mapPressTimer=null; } }
   function beginLongPressFromDomEvent(ev){ clearMapPressTimer(); state.mapPressLatLng=state.map.mouseEventToLatLng(ev); state.mapPressTimer=setTimeout(function(){ state.suppressNextMapClick=true; if(navigator.vibrate){ try{ navigator.vibrate(30); }catch(e){} } if(state.mapPressLatLng) openMarkerModal("create",{ latlng:state.mapPressLatLng }); clearMapPressTimer(); },600); }
   const mapContainer=state.map.getContainer();
   mapContainer.addEventListener("mousedown", beginLongPressFromDomEvent);
   mapContainer.addEventListener("mouseup", clearMapPressTimer);
-  mapContainer.addEventListener("mouseleave", clearMapPressTimer);
+  mapContainer.addEventListener("mouseleave", function(){
+    clearMapPressTimer();
+    if(state.gestureActive){
+      state.gestureRotationStart = null;
+      endManualGesture();
+    }
+  });
+
   mapContainer.addEventListener("touchstart", function(ev){
     if(ev.touches && ev.touches.length === 2){
+      ev.preventDefault();
       clearMapPressTimer();
       state.rotateMode = "manual";
       syncRotateModeFlags();
       state.gestureRotationStart = touchAngle(ev.touches[0], ev.touches[1]);
       state.gestureStartAngle = Number(state.manualRotateAngle) || 0;
       if(el.rotateMode) el.rotateMode.value = "manual";
+      beginManualGesture();
       showToast("已進入手動旋轉模式");
       return;
     }
-    if(ev.touches&&ev.touches.length===1) beginLongPressFromDomEvent(ev.touches[0]);
-  }, { passive:true });
+    if(ev.touches && ev.touches.length === 1 && !state.gestureActive){
+      beginLongPressFromDomEvent(ev.touches[0]);
+    }
+  }, { passive:false });
 
   mapContainer.addEventListener("touchmove", function(ev){
     if(ev.touches && ev.touches.length === 2 && state.gestureRotationStart !== null){
+      ev.preventDefault();
       const current = touchAngle(ev.touches[0], ev.touches[1]);
       const delta = current - state.gestureRotationStart;
       setManualRotation(normalizeAngle(state.gestureStartAngle + delta));
       applyMapRotation();
       updateCompass();
       if(el.manualRotateAngleText) el.manualRotateAngleText.textContent = String(Math.round(Number(state.manualRotateAngle)||0)) + "°";
+      return;
     }
-  }, { passive:true });
+  }, { passive:false });
 
   mapContainer.addEventListener("touchend", function(ev){
     if(!ev.touches || ev.touches.length < 2){
       state.gestureRotationStart = null;
+      endManualGesture();
     }
     clearMapPressTimer();
-  }, { passive:true });
+  }, { passive:false });
 
   mapContainer.addEventListener("touchcancel", function(){
     state.gestureRotationStart = null;
+    endManualGesture();
     clearMapPressTimer();
-  }, { passive:true });
+  }, { passive:false });
+
   state.map.on("movestart", function(){ clearMapPressTimer(); state.suppressFollowUntil=Date.now()+8000; });
   state.map.on("click", function(){ if(state.suppressNextMapClick){ state.suppressNextMapClick=false; return; } });
+  state.map.on("move", function(){ applyMapRotation(); });
+  state.map.on("zoom", function(){ applyMapRotation(); });
+  state.map.on("zoomend", function(){ applyMapRotation(); });
+  state.map.on("resize", function(){ applyMapRotation(); });
   state.map.on("move", function(){ applyMapRotation(); });
   state.map.on("zoom", function(){ applyMapRotation(); });
   state.map.on("resize", function(){ applyMapRotation(); });
