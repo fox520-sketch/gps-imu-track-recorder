@@ -214,6 +214,9 @@
       <div class="group"><label for="imuCalibrationStep">校準逼近比例</label><input id="imuCalibrationStep" class="input" type="number" min="0.05" max="1" step="0.05" value="0.35"></div>
       <div class="group"><label for="imuPointIntervalSec">IMU 出點間隔（秒）</label><input id="imuPointIntervalSec" class="input" type="number" min="1" step="1" value="10"></div>
       <div class="group"><label for="imuMaxStepMeters">IMU 單步最大位移（公尺）</label><input id="imuMaxStepMeters" class="input" type="number" min="0.1" step="0.1" value="1.0"></div>
+      <div class="group"><label for="fusionGpsWeight">GPS 融合基礎權重</label><input id="fusionGpsWeight" class="input" type="number" min="0.05" max="0.95" step="0.05" value="0.65"></div>
+      <div class="group"><label for="fusionDriftLockMeters">停止漂移鎖定距離（公尺）</label><input id="fusionDriftLockMeters" class="input" type="number" min="1" max="30" step="1" value="6"></div>
+      <div class="group"><label for="fusionAutoCalibSec">自動校正秒數</label><input id="fusionAutoCalibSec" class="input" type="number" min="3" max="60" step="1" value="12"></div>
     </div>
 
     <div class="tab-panel" id="tab-export">
@@ -341,7 +344,7 @@
     resumeBtn:$("resumeBtn"), stopBtn:$("stopBtn"), locateBtn:$("locateBtn"), saveTrackBtn:$("saveTrackBtn"), clearBtn:$("clearBtn"),
     highAccuracy:$("highAccuracy"), followMap:$("followMap"), wakeLockEnabled:$("wakeLockEnabled"), darkModeEnabled:$("darkModeEnabled"),
     minDistance:$("minDistance"), imuScale:$("imuScale"), imuDistanceMultiplier:$("imuDistanceMultiplier"), imuFilterAlpha:$("imuFilterAlpha"), imuCalibrationStep:$("imuCalibrationStep"),
-    imuPointIntervalSec:$("imuPointIntervalSec"), imuMaxStepMeters:$("imuMaxStepMeters"), exportFormat:$("exportFormat"), exportBtn:$("exportBtn"),
+    imuPointIntervalSec:$("imuPointIntervalSec"), imuMaxStepMeters:$("imuMaxStepMeters"), fusionGpsWeight:$("fusionGpsWeight"), fusionDriftLockMeters:$("fusionDriftLockMeters"), fusionAutoCalibSec:$("fusionAutoCalibSec"), exportFormat:$("exportFormat"), exportBtn:$("exportBtn"),
     exportFullBtn:$("exportFullBtn"), downloadCardBtn:$("downloadCardBtn"), downloadCardBtn2:$("downloadCardBtn2"),
     importFile:$("importFile"), refreshHistoryBtn:$("refreshHistoryBtn"), clearHistoryBtn:$("clearHistoryBtn"),
     showGpsLine:$("showGpsLine"), showImuLine:$("showImuLine"), showSmartLine:$("showSmartLine"), rotateMap:$("rotateMap"), navigationMode:$("navigationMode"), recordBadge:$("recordBadge"), statTime:$("statTime"), statDistance:$("statDistance"),
@@ -360,7 +363,7 @@
       userMarkers: state.userMarkers, historyCompareIds: state.historyCompareIds, historySearch: state.historySearch,
       followMap: state.followMap, highAccuracy: state.highAccuracy, wakeLockEnabled: state.wakeLockEnabled, darkModeEnabled: state.darkModeEnabled,
       minDistance: state.minDistance, imuScale: state.imuScale, imuDistanceMultiplier: state.imuDistanceMultiplier, imuFilterAlpha: state.imuFilterAlpha, imuCalibrationStep: state.imuCalibrationStep,
-      imuPointIntervalSec: state.imuPointIntervalSec, imuMaxStepMeters: state.imuMaxStepMeters, exportFormat: state.exportFormat,
+      imuPointIntervalSec: state.imuPointIntervalSec, imuMaxStepMeters: state.imuMaxStepMeters, fusionGpsWeight: state.fusionGpsWeight, fusionDriftLockMeters: state.fusionDriftLockMeters, fusionAutoCalibSec: state.fusionAutoCalibSec, exportFormat: state.exportFormat,
       markerCategory: state.markerCategory, showGpsLine: state.showGpsLine, showImuLine: state.showImuLine, showSmartLine: state.showSmartLine, rotateMap: state.rotateMap, navigationMode: state.navigationMode
     }));
   }
@@ -562,6 +565,7 @@
     el.compareSummary.innerHTML=items.map((item,idx)=>{ const pts=item.points||[]; let dist=0; for(let i=1;i<pts.length;i++) dist+=haversine(pts[i-1],pts[i]); return (idx+1)+". "+escapeHtml(item.name||"未命名")+"（"+pts.length+" 點，"+formatDistance(dist)+"）"; }).join("<br>");
   }
 
+
   function lerp(a, b, t){ return a + (b - a) * t; }
 
   function findGpsNeighbors(ts){
@@ -581,63 +585,124 @@
     };
   }
 
+  function safeAccuracyWeight(acc){
+    const a = Number(acc);
+    if(!Number.isFinite(a) || a <= 0) return 0;
+    if(a <= 8) return 1.0;
+    if(a <= 15) return 0.85;
+    if(a <= 25) return 0.60;
+    if(a <= 40) return 0.35;
+    return 0.15;
+  }
+
   function computeSmartTrack(){
     if(!state.points.length) return [];
     const smart = [];
     let lastSmart = null;
-    let lastImu = null;
+    let lastImuRaw = null;
+    let lastStrongGps = null;
+    let lastAutoCalibTs = 0;
+
+    const baseGpsWeight = Math.max(0.05, Math.min(0.95, Number(state.fusionGpsWeight) || 0.65));
+    const driftLockMeters = Math.max(1, Number(state.fusionDriftLockMeters) || 6);
+    const autoCalibMs = Math.max(3000, (Number(state.fusionAutoCalibSec) || 12) * 1000);
 
     for(const p of state.points){
       const ts = Number(p.timestamp) || 0;
+      const src = p.sourceMode || "gps";
 
-      if(p.sourceMode === "gps" || p.sourceMode === "imported"){
+      if(src === "gps" || src === "imported"){
         const gpsLL = { lat: p.lat, lng: p.lng };
         smart.push(gpsLL);
         lastSmart = gpsLL;
+        lastStrongGps = {
+          lat: p.lat,
+          lng: p.lng,
+          accuracy: Number(p.accuracy),
+          timestamp: ts
+        };
         continue;
       }
 
-      if(p.sourceMode === "imu"){
-        const imuLL = { lat: p.lat, lng: p.lng };
+      if(src === "imu"){
+        const imuRaw = { lat: p.lat, lng: p.lng };
 
         if(!lastSmart){
-          smart.push(imuLL);
-          lastSmart = imuLL;
-          lastImu = imuLL;
+          smart.push(imuRaw);
+          lastSmart = imuRaw;
+          lastImuRaw = imuRaw;
           continue;
         }
 
-        let predicted = imuLL;
-        if(lastImu){
-          const dNorth = (imuLL.lat - lastImu.lat);
-          const dEast = (imuLL.lng - lastImu.lng);
+        let predicted = imuRaw;
+        if(lastImuRaw){
           predicted = {
-            lat: lastSmart.lat + dNorth,
-            lng: lastSmart.lng + dEast
+            lat: lastSmart.lat + (imuRaw.lat - lastImuRaw.lat),
+            lng: lastSmart.lng + (imuRaw.lng - lastImuRaw.lng)
           };
         }
 
-        const neighbors = findGpsNeighbors(ts);
+        const latestGps = findGpsNeighbors(ts);
         let fused = predicted;
+        let gpsPullWeight = 0;
 
-        if(neighbors.prev && neighbors.next){
-          const t0 = Number(neighbors.prev.timestamp) || 0;
-          const t1 = Number(neighbors.next.timestamp) || 0;
+        if(latestGps.prev && latestGps.next){
+          const t0 = Number(latestGps.prev.timestamp) || 0;
+          const t1 = Number(latestGps.next.timestamp) || 0;
           const ratio = t1 > t0 ? Math.max(0, Math.min(1, (ts - t0) / (t1 - t0))) : 0;
-          const gpsInterp = {
-            lat: lerp(neighbors.prev.lat, neighbors.next.lat, ratio),
-            lng: lerp(neighbors.prev.lng, neighbors.next.lng, ratio)
+          const interp = {
+            lat: lerp(latestGps.prev.lat, latestGps.next.lat, ratio),
+            lng: lerp(latestGps.prev.lng, latestGps.next.lng, ratio)
           };
-          fused = blendLatLng(predicted, gpsInterp, 0.35);
-        }else if(neighbors.prev){
-          const ageMs = Math.max(0, ts - (Number(neighbors.prev.timestamp) || 0));
-          const pull = ageMs < 8000 ? 0.18 : ageMs < 15000 ? 0.10 : 0.04;
-          fused = blendLatLng(predicted, { lat: neighbors.prev.lat, lng: neighbors.prev.lng }, pull);
+          const accW = Math.max(
+            safeAccuracyWeight(latestGps.prev.accuracy),
+            safeAccuracyWeight(latestGps.next.accuracy)
+          );
+          gpsPullWeight = Math.min(0.9, baseGpsWeight * accW);
+          fused = blendLatLng(predicted, interp, gpsPullWeight);
+          lastStrongGps = { lat: interp.lat, lng: interp.lng, accuracy: 12, timestamp: ts };
+        } else if(latestGps.prev){
+          const ageMs = Math.max(0, ts - (Number(latestGps.prev.timestamp) || 0));
+          const accW = safeAccuracyWeight(latestGps.prev.accuracy);
+          let ageFactor = ageMs < 4000 ? 0.8 : ageMs < 9000 ? 0.45 : ageMs < 16000 ? 0.20 : 0.08;
+          gpsPullWeight = Math.min(0.55, baseGpsWeight * accW * ageFactor);
+          fused = blendLatLng(predicted, { lat: latestGps.prev.lat, lng: latestGps.prev.lng }, gpsPullWeight);
+          if(accW >= 0.35){
+            lastStrongGps = { lat: latestGps.prev.lat, lng: latestGps.prev.lng, accuracy: latestGps.prev.accuracy, timestamp: Number(latestGps.prev.timestamp)||ts };
+          }
+        }
+
+        const latestSpeed = Number(p.speed);
+        const nearStill = !Number.isFinite(latestSpeed) || latestSpeed < 0.8 / 3.6;
+
+        if(lastStrongGps){
+          const drift = haversine(fused, lastStrongGps);
+          const ageMs = Math.max(0, ts - (Number(lastStrongGps.timestamp) || 0));
+
+          if(nearStill && ageMs < 15000 && drift < driftLockMeters){
+            fused = blendLatLng(fused, { lat: lastStrongGps.lat, lng: lastStrongGps.lng }, 0.55);
+          }
+
+          if(ageMs >= autoCalibMs && drift > 1.5 && drift < 20){
+            fused = blendLatLng(fused, { lat: lastStrongGps.lat, lng: lastStrongGps.lng }, 0.22);
+            lastAutoCalibTs = ts;
+          }
+        }
+
+        if(lastSmart){
+          const seg = haversine(lastSmart, fused);
+          if(seg > 20){
+            const ratio = 20 / seg;
+            fused = {
+              lat: lastSmart.lat + (fused.lat - lastSmart.lat) * ratio,
+              lng: lastSmart.lng + (fused.lng - lastSmart.lng) * ratio
+            };
+          }
         }
 
         smart.push(fused);
         lastSmart = fused;
-        lastImu = imuLL;
+        lastImuRaw = imuRaw;
         continue;
       }
 
@@ -806,8 +871,8 @@
     updateCompassCompact();
   }
 
-  function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; if(el.showSmartLine) el.showSmartLine.checked=state.showSmartLine;
-    if(el.rotateMap) el.rotateMap.checked=state.rotateMap; if(el.navigationMode) el.navigationMode.checked=state.navigationMode; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length+"；智慧線 "+(state.showSmartLine?"顯示":"隱藏")+"；導航模式 "+(state.navigationMode?"開":"關"):"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
+  function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); if(el.fusionGpsWeight) el.fusionGpsWeight.value=String(state.fusionGpsWeight); if(el.fusionDriftLockMeters) el.fusionDriftLockMeters.value=String(state.fusionDriftLockMeters); if(el.fusionAutoCalibSec) el.fusionAutoCalibSec.value=String(state.fusionAutoCalibSec); el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; if(el.showSmartLine) el.showSmartLine.checked=state.showSmartLine;
+    if(el.rotateMap) el.rotateMap.checked=state.rotateMap; if(el.navigationMode) el.navigationMode.checked=state.navigationMode; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length+"；智慧線 "+(state.showSmartLine?"顯示":"隱藏")+"；融合權重 "+(Number(state.fusionGpsWeight||0.65).toFixed(2))+"；導航模式 "+(state.navigationMode?"開":"關"):"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
 
   el.trackName.addEventListener("input", function(){ state.trackName=this.value; saveState(); drawShareCard(); });
   el.placeName.addEventListener("input", function(){ state.placeName=this.value; saveState(); updateUI(false); });
@@ -835,6 +900,9 @@
   el.imuCalibrationStep.addEventListener("input", function(){ state.imuCalibrationStep=Math.max(0.05,Math.min(1,Number(this.value||0.35))); saveState(); });
   el.imuPointIntervalSec.addEventListener("input", function(){ state.imuPointIntervalSec=Math.max(1,Number(this.value||10)); saveState(); });
   el.imuMaxStepMeters.addEventListener("input", function(){ state.imuMaxStepMeters=Math.max(0.1,Number(this.value||1)); saveState(); });
+  if(el.fusionGpsWeight) el.fusionGpsWeight.addEventListener("input", function(){ state.fusionGpsWeight=Math.max(0.05,Math.min(0.95,Number(this.value||0.65))); saveState(); updateUI(false); });
+  if(el.fusionDriftLockMeters) el.fusionDriftLockMeters.addEventListener("input", function(){ state.fusionDriftLockMeters=Math.max(1,Math.min(30,Number(this.value||6))); saveState(); updateUI(false); });
+  if(el.fusionAutoCalibSec) el.fusionAutoCalibSec.addEventListener("input", function(){ state.fusionAutoCalibSec=Math.max(3,Math.min(60,Number(this.value||12))); saveState(); updateUI(false); });
   el.showGpsLine.addEventListener("change", function(){ state.showGpsLine=this.checked; updateUI(); });
   el.showImuLine.addEventListener("change", function(){ state.showImuLine=this.checked; updateUI(); });
   if(el.showSmartLine) el.showSmartLine.addEventListener("change", function(){ state.showSmartLine=this.checked; updateUI(); });
