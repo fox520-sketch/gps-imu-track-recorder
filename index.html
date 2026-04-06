@@ -168,7 +168,7 @@
     <div class="group"><div class="row"><div><label style="margin:0">顯示陀螺儀軌跡</label></div><input id="showImuLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">顯示智慧軌跡</label><div class="mini">白色主線，融合 GPS / IMU 並做平滑修正</div></div><input id="showSmartLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><label for="rotateMode">旋轉模式選擇</label><select id="rotateMode" class="select"><option value="off">關閉</option><option value="stable">穩定模式</option><option value="navigation">導航模式</option><option value="compass">指南針模式</option><option value="manual">手動旋轉模式</option></select><div class="mini">穩定模式：低速較穩｜導航模式：導航視角｜指南針模式：原地也會轉｜手動旋轉：自己調整角度</div></div>
-      <div class="group"><label for="manualRotateAngle">手動旋轉角度</label><input id="manualRotateAngle" class="input" type="range" min="0" max="359" step="1" value="0"><div class="mini">目前角度：<span id="manualRotateAngleText">0°</span></div></div>
+      <div class="group"><label for="manualRotateAngle">手動旋轉角度</label><input id="manualRotateAngle" class="input" type="range" min="0" max="359" step="1" value="0"><div class="btns" style="margin-top:8px"><button id="manualRotateLeftBtn" class="btn secondary" type="button">左轉 15°</button><button id="manualRotateResetBtn" class="btn secondary" type="button">回正 0°</button><button id="manualRotateRightBtn" class="btn secondary" type="button">右轉 15°</button></div><div class="mini">目前角度：<span id="manualRotateAngleText">0°</span></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">導航模式</label><div class="mini">位置固定在畫面下方，地圖跟隨前進方向</div></div><input id="navigationMode" class="switch" type="checkbox"></div></div>
 
     <div class="debug"><strong>IMU 偵測狀態</strong><div id="imuDebugText">尚未啟動陀螺儀。</div></div>
@@ -358,7 +358,7 @@
     imuPointIntervalSec:$("imuPointIntervalSec"), imuMaxStepMeters:$("imuMaxStepMeters"), fusionGpsWeight:$("fusionGpsWeight"), fusionDriftLockMeters:$("fusionDriftLockMeters"), fusionAutoCalibSec:$("fusionAutoCalibSec"), gpsAccuracyLimit:$("gpsAccuracyLimit"), autoZoomNav:$("autoZoomNav"), exportFormat:$("exportFormat"), exportBtn:$("exportBtn"),
     exportFullBtn:$("exportFullBtn"), downloadCardBtn:$("downloadCardBtn"), downloadCardBtn2:$("downloadCardBtn2"),
     importFile:$("importFile"), refreshHistoryBtn:$("refreshHistoryBtn"), clearHistoryBtn:$("clearHistoryBtn"),
-    showGpsLine:$("showGpsLine"), showImuLine:$("showImuLine"), showSmartLine:$("showSmartLine"), rotateMode:$("rotateMode"), manualRotateAngle:$("manualRotateAngle"), manualRotateAngleText:$("manualRotateAngleText"), navigationMode:$("navigationMode"), recordBadge:$("recordBadge"), statTime:$("statTime"), statDistance:$("statDistance"),
+    showGpsLine:$("showGpsLine"), showImuLine:$("showImuLine"), showSmartLine:$("showSmartLine"), rotateMode:$("rotateMode"), manualRotateAngle:$("manualRotateAngle"), manualRotateAngleText:$("manualRotateAngleText"), manualRotateLeftBtn:$("manualRotateLeftBtn"), manualRotateResetBtn:$("manualRotateResetBtn"), manualRotateRightBtn:$("manualRotateRightBtn"), navigationMode:$("navigationMode"), recordBadge:$("recordBadge"), statTime:$("statTime"), statDistance:$("statDistance"),
     statSpeed:$("statSpeed"), statAvgSpeed:$("statAvgSpeed"), statMaxSpeed:$("statMaxSpeed"), statPoints:$("statPoints"), statMaxAlt:$("statMaxAlt"),
     statusBox:$("statusBox"), pointsList:$("pointsList"), historyList:$("historyList"), historySearch:$("historySearch"), speedChart:$("speedChart"),
     altChart:$("altChart"), imuDebugText:$("imuDebugText"), installHint:$("installHint"), tabBtns:Array.from(document.querySelectorAll(".tab-btn")),
@@ -521,6 +521,19 @@
     state.navigationMode = mode === "navigation";
   }
 
+
+  function setManualRotation(angle){
+    state.rotateMode = "manual";
+    state.manualRotateAngle = ((Number(angle) || 0) % 360 + 360) % 360;
+    syncRotateModeFlags();
+    if(el.rotateMode) el.rotateMode.value = "manual";
+    if(el.manualRotateAngle) el.manualRotateAngle.value = String(Math.round(state.manualRotateAngle));
+    if(el.manualRotateAngleText) el.manualRotateAngleText.textContent = String(Math.round(state.manualRotateAngle)) + "°";
+    applyMapRotation();
+    updateCompass();
+    saveState();
+  }
+
   function getRotateModeHeading(){
     const mode = state.rotateMode || "off";
     if(mode === "compass") return getLatestHeading();
@@ -561,12 +574,10 @@
   function applyMapRotation(){
     const mapEl = document.getElementById("map");
     if(!mapEl) return;
-    if((state.rotateMode || "off") !== "off"){
-      const heading = getRotateModeHeading();
-      mapEl.style.transform = "rotate(" + (-heading) + "deg)";
-    }else{
-      mapEl.style.transform = "rotate(0deg)";
-    }
+    const target = mapEl.querySelector(".leaflet-map-pane") || mapEl;
+    const heading = ((state.rotateMode || "off") !== "off") ? getRotateModeHeading() : 0;
+    target.style.transformOrigin = "50% 50%";
+    target.style.transform = "rotate(" + (-heading) + "deg)";
   }
 
 
@@ -966,10 +977,12 @@
     showToast(labels[state.rotateMode] || "已切換旋轉模式");
   });
   if(el.manualRotateAngle) el.manualRotateAngle.addEventListener("input", function(){
-    state.manualRotateAngle = Math.max(0, Math.min(359, Number(this.value)||0));
-    saveState();
+    setManualRotation(Math.max(0, Math.min(359, Number(this.value)||0)));
     updateUI(false);
   });
+  if(el.manualRotateLeftBtn) el.manualRotateLeftBtn.addEventListener("click", function(){ setManualRotation((Number(state.manualRotateAngle)||0) - 15); updateUI(false); showToast("手動左轉 15°"); });
+  if(el.manualRotateResetBtn) el.manualRotateResetBtn.addEventListener("click", function(){ setManualRotation(0); updateUI(false); showToast("已回正 0°"); });
+  if(el.manualRotateRightBtn) el.manualRotateRightBtn.addEventListener("click", function(){ setManualRotation((Number(state.manualRotateAngle)||0) + 15); updateUI(false); showToast("手動右轉 15°"); });
   if(el.navigationMode) el.navigationMode.addEventListener("change", function(){ state.navigationMode=this.checked; if(this.checked) state.rotateMap=true; state.suppressFollowUntil=0; updateUI(); showToast(state.navigationMode ? "已開啟導航模式" : "已關閉導航模式"); });
   el.exportFormat.addEventListener("change", function(){ state.exportFormat=this.value; saveState(); });
   el.exportBtn.addEventListener("click", exportTrack);
