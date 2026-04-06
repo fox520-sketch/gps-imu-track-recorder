@@ -114,7 +114,7 @@
       <button id="toggleThemeBtn" class="btn secondary" type="button">切換深色模式</button>
     </div>
 
-    <div class="note"><strong>第 3 波說明</strong>這版補上歷史軌跡搜尋、最多 2 條歷史軌跡比較、可下載分享圖卡。地圖瓦片仍需網路。</div>
+    <div class="note"><strong>第 3 波說明</strong>這版補上歷史軌跡搜尋、最多 2 條歷史軌跡比較、可下載分享圖卡；白線已改成智慧融合。地圖瓦片仍需網路。</div>
 
     <div class="field">
       <label for="trackName">軌跡名稱</label>
@@ -153,7 +153,7 @@
     
     <div class="group"><div class="row"><div><label style="margin:0">顯示 GPS 軌跡</label></div><input id="showGpsLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">顯示陀螺儀軌跡</label></div><input id="showImuLine" class="switch" type="checkbox" checked></div></div>
-    <div class="group"><div class="row"><div><label style="margin:0">顯示智慧軌跡</label><div class="mini">白色主線，整合 GPS / IMU 點位</div></div><input id="showSmartLine" class="switch" type="checkbox" checked></div></div>
+    <div class="group"><div class="row"><div><label style="margin:0">顯示智慧軌跡</label><div class="mini">白色主線，融合 GPS / IMU 並做平滑修正</div></div><input id="showSmartLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">地圖旋轉</label><div class="mini">跟隨方向旋轉地圖</div></div><input id="rotateMap" class="switch" type="checkbox"></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">導航模式</label><div class="mini">位置固定在畫面下方，地圖跟隨前進方向</div></div><input id="navigationMode" class="switch" type="checkbox"></div></div>
 
@@ -528,9 +528,97 @@
     if(!items.length){ el.compareSummary.textContent="目前尚未選擇比較軌跡。"; return; }
     el.compareSummary.innerHTML=items.map((item,idx)=>{ const pts=item.points||[]; let dist=0; for(let i=1;i<pts.length;i++) dist+=haversine(pts[i-1],pts[i]); return (idx+1)+". "+escapeHtml(item.name||"未命名")+"（"+pts.length+" 點，"+formatDistance(dist)+"）"; }).join("<br>");
   }
+
+  function lerp(a, b, t){ return a + (b - a) * t; }
+
+  function findGpsNeighbors(ts){
+    let prev = null, next = null;
+    for(const p of state.gpsPoints){
+      const t = Number(p.timestamp) || 0;
+      if(t <= ts) prev = p;
+      if(t > ts){ next = p; break; }
+    }
+    return { prev, next };
+  }
+
+  function blendLatLng(a, b, w){
+    return {
+      lat: a.lat * (1 - w) + b.lat * w,
+      lng: a.lng * (1 - w) + b.lng * w
+    };
+  }
+
+  function computeSmartTrack(){
+    if(!state.points.length) return [];
+    const smart = [];
+    let lastSmart = null;
+    let lastImu = null;
+
+    for(const p of state.points){
+      const ts = Number(p.timestamp) || 0;
+
+      if(p.sourceMode === "gps" || p.sourceMode === "imported"){
+        const gpsLL = { lat: p.lat, lng: p.lng };
+        smart.push(gpsLL);
+        lastSmart = gpsLL;
+        continue;
+      }
+
+      if(p.sourceMode === "imu"){
+        const imuLL = { lat: p.lat, lng: p.lng };
+
+        if(!lastSmart){
+          smart.push(imuLL);
+          lastSmart = imuLL;
+          lastImu = imuLL;
+          continue;
+        }
+
+        let predicted = imuLL;
+        if(lastImu){
+          const dNorth = (imuLL.lat - lastImu.lat);
+          const dEast = (imuLL.lng - lastImu.lng);
+          predicted = {
+            lat: lastSmart.lat + dNorth,
+            lng: lastSmart.lng + dEast
+          };
+        }
+
+        const neighbors = findGpsNeighbors(ts);
+        let fused = predicted;
+
+        if(neighbors.prev && neighbors.next){
+          const t0 = Number(neighbors.prev.timestamp) || 0;
+          const t1 = Number(neighbors.next.timestamp) || 0;
+          const ratio = t1 > t0 ? Math.max(0, Math.min(1, (ts - t0) / (t1 - t0))) : 0;
+          const gpsInterp = {
+            lat: lerp(neighbors.prev.lat, neighbors.next.lat, ratio),
+            lng: lerp(neighbors.prev.lng, neighbors.next.lng, ratio)
+          };
+          fused = blendLatLng(predicted, gpsInterp, 0.35);
+        }else if(neighbors.prev){
+          const ageMs = Math.max(0, ts - (Number(neighbors.prev.timestamp) || 0));
+          const pull = ageMs < 8000 ? 0.18 : ageMs < 15000 ? 0.10 : 0.04;
+          fused = blendLatLng(predicted, { lat: neighbors.prev.lat, lng: neighbors.prev.lng }, pull);
+        }
+
+        smart.push(fused);
+        lastSmart = fused;
+        lastImu = imuLL;
+        continue;
+      }
+
+      const generic = { lat: p.lat, lng: p.lng };
+      smart.push(generic);
+      lastSmart = generic;
+    }
+
+    return smart.map(p => [p.lat, p.lng]);
+  }
+
   function renderMap(){
     if(!state.map) return;
-    const gpsLatLngs=state.gpsPoints.map(p=>[p.lat,p.lng]), imuLatLngs=state.imuPoints.map(p=>[p.lat,p.lng]), smartLatLngs=state.points.map(p=>[p.lat,p.lng]);
+    const gpsLatLngs=state.gpsPoints.map(p=>[p.lat,p.lng]), imuLatLngs=state.imuPoints.map(p=>[p.lat,p.lng]), smartLatLngs=computeSmartTrack();
     state.gpsLine.setLatLngs(state.showGpsLine?gpsLatLngs:[]);
     state.imuLine.setLatLngs(state.showImuLine?imuLatLngs:[]);
     state.smartShadowLine.setLatLngs(state.showSmartLine?smartLatLngs:[]);
