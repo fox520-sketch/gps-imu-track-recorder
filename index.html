@@ -720,7 +720,22 @@
   function updateElapsed(){ if(!state.startedAt) return; const paused=state.isPaused&&state.pauseStartedAt?(Date.now()-state.pauseStartedAt):0; state.elapsedMs=Date.now()-state.startedAt-state.pausedAccumulatedMs-paused; if(state.elapsedMs<0) state.elapsedMs=0; }
   function startTimer(){ if(state.timer) clearInterval(state.timer); state.timer=setInterval(()=>{ updateElapsed(); updateUI(false); },1000); }
   function stopAllSensors(){ if(state.watchId!==null){ navigator.geolocation.clearWatch(state.watchId); state.watchId=null; } if(state.imuMotionHandler){ window.removeEventListener("devicemotion",state.imuMotionHandler); state.imuMotionHandler=null; } if(state.imuOrientationHandler){ window.removeEventListener("deviceorientation",state.imuOrientationHandler); state.imuOrientationHandler=null; } state.imuSession=null; if(state.timer){ clearInterval(state.timer); state.timer=null; } releaseWakeLock(); }
-  function addPoint(next){ if(state.isPaused) return; const bucket=next.sourceMode==="imu"?state.imuPoints:state.gpsPoints; const last=bucket[bucket.length-1]; if(last){ const gap=haversine(last,next); const limit=next.sourceMode==="imu"?0.5:Math.max(0,Number(state.minDistance)||0); if(gap<limit) return; } if(next.sourceMode==="imu"){ if(next.imuBaseLat == null || next.imuBaseLng == null){ next.imuBaseLat = next.lat; next.imuBaseLng = next.lng; } } bucket.push(next); if(next.sourceMode==="gps") state.lastGpsFix={ lat:next.lat,lng:next.lng }; if(next.sourceMode==="imu") applyImuDistanceMultiplier(); else state.points=state.gpsPoints.concat(state.imuPoints).sort((a,b)=>a.timestamp-b.timestamp); updateElapsed(); saveState(); updateUI(); }
+  
+  function isBadGps(p){
+    if(!p) return true;
+    if(p.accuracy && p.accuracy > 50) return true;
+    if(p.speed && p.speed > 80/3.6) return true;
+    return false;
+  }
+
+  function isJump(prev, next){
+    if(!prev) return false;
+    const dist = haversine(prev, next);
+    return dist > 80;
+  }
+
+  function addPoint(next){ if(state.isPaused) return; const bucket=next.sourceMode==="imu"?state.imuPoints:state.gpsPoints; const last=bucket[bucket.length-1]; if(last){
+      if(isJump(last,next)) return; const gap=haversine(last,next); const limit=next.sourceMode==="imu"?0.5:Math.max(0,Number(state.minDistance)||0); if(gap<limit) return; } if(next.sourceMode==="imu"){ if(next.imuBaseLat == null || next.imuBaseLng == null){ next.imuBaseLat = next.lat; next.imuBaseLng = next.lng; } } bucket.push(next); if(next.sourceMode==="gps") state.lastGpsFix={ lat:next.lat,lng:next.lng }; if(next.sourceMode==="imu") applyImuDistanceMultiplier(); else state.points=state.gpsPoints.concat(state.imuPoints).sort((a,b)=>a.timestamp-b.timestamp); updateElapsed(); saveState(); updateUI(); }
   function clampImuStep(baseLatLng,northMeters,eastMeters){ const maxStep=Math.max(0.1,Number(state.imuMaxStepMeters)||1), dist=Math.hypot(northMeters,eastMeters); if(dist<=maxStep) return offsetLatLng(baseLatLng,northMeters,eastMeters); const ratio=maxStep/dist; return offsetLatLng(baseLatLng,northMeters*ratio,eastMeters*ratio); }
   function addGpsPosition(pos){ addPoint({ lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,altitude:pos.coords.altitude,speed:pos.coords.speed,heading:pos.coords.heading,timestamp:pos.timestamp,sourceMode:"gps",placeName:state.placeName }); if(state.imuEnabled&&state.imuSession&&!state.imuPoints.length){ state.imuSession.anchor={ lat:pos.coords.latitude,lng:pos.coords.longitude }; state.imuSession.posNorth=0; state.imuSession.posEast=0; state.imuSession.velocityNorth=0; state.imuSession.velocityEast=0; } }
   function startGps(){ if(!("geolocation" in navigator)){ state.error="此裝置或瀏覽器不支援 Geolocation API。"; updateUI(); return; } if(!state.isRecording){ state.startedAt=Date.now(); state.elapsedMs=0; state.pausedAccumulatedMs=0; state.pauseStartedAt=null; state.isRecording=true; state.isPaused=false; state.gpsPoints=[]; state.imuPoints=[]; state.points=[]; } state.gpsEnabled=true; startTimer(); ensureWakeLock(); if(state.watchId!==null) navigator.geolocation.clearWatch(state.watchId); state.watchId=navigator.geolocation.watchPosition(addGpsPosition, err=>{ state.error=err.message||"定位失敗"; updateUI(); }, { enableHighAccuracy:state.highAccuracy, maximumAge:0, timeout:15000 }); updateUI(); }
