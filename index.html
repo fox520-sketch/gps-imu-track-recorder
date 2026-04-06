@@ -74,6 +74,12 @@
     .map-wrap{position:relative;width:100%;height:100%}
     .map-fab{position:absolute;top:12px;right:12px;z-index:1200;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(15,23,42,.18)}
     .map-locate-fab{top:auto;right:12px;bottom:16px}
+    .map-mini-fab{right:128px;padding:10px 12px}
+    .map-tools-top,.map-tools-bottom{position:absolute;right:12px;z-index:1300;display:flex;gap:8px;align-items:center}
+    .map-tools-top{top:12px}
+    .map-tools-bottom{bottom:16px}
+    body.map-fullscreen .map-tools-top{top:max(6px, env(safe-area-inset-top, 0px))}
+    body.map-fullscreen .map-tools-bottom{bottom:max(16px, env(safe-area-inset-bottom, 0px))}
     .compass-wrap.compact .compass-ring{width:44px;height:44px}
     .compass-wrap.compact .compass-arrow{top:6px;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:16px solid #ef4444;transform-origin:50% 17px}
     .compass-wrap.compact .compass-arrow::after{left:-5px;top:16px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:13px solid #e2e8f0}
@@ -84,8 +90,8 @@
     body.map-fullscreen .wrap > .card:first-child{display:none}
     body.map-fullscreen .wrap > .card:last-child{position:fixed;inset:0;z-index:2500;border-radius:0;border:0;padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
     body.map-fullscreen #map{min-height:100vh;height:100vh}
-    body.map-fullscreen .map-fab{top:max(6px, env(safe-area-inset-top, 0px));right:12px;z-index:1600}
-    body.map-fullscreen .map-locate-fab{top:auto;bottom:max(16px, env(safe-area-inset-bottom, 0px));right:12px}
+    body.map-fullscreen .map-fab{z-index:1600}
+    body.map-fullscreen .map-locate-fab{top:auto;right:12px}
     body.map-fullscreen .compass-wrap{z-index:1600}
     
     .compass-wrap{position:absolute;left:60px;top:18px;z-index:1200;display:flex;flex-direction:column;align-items:center;gap:4px}
@@ -217,6 +223,8 @@
       <div class="group"><label for="fusionGpsWeight">GPS 融合基礎權重</label><input id="fusionGpsWeight" class="input" type="number" min="0.05" max="0.95" step="0.05" value="0.65"></div>
       <div class="group"><label for="fusionDriftLockMeters">停止漂移鎖定距離（公尺）</label><input id="fusionDriftLockMeters" class="input" type="number" min="1" max="30" step="1" value="6"></div>
       <div class="group"><label for="fusionAutoCalibSec">自動校正秒數</label><input id="fusionAutoCalibSec" class="input" type="number" min="3" max="60" step="1" value="12"></div>
+      <div class="group"><label for="gpsAccuracyLimit">GPS 精度上限（公尺）</label><input id="gpsAccuracyLimit" class="input" type="number" min="10" max="120" step="5" value="50"></div>
+      <div class="group"><div class="row"><div><label style="margin:0">導航自動縮放</label><div class="mini">低速拉近，高速拉遠</div></div><input id="autoZoomNav" class="switch" type="checkbox" checked></div></div>
     </div>
 
     <div class="tab-panel" id="tab-export">
@@ -282,8 +290,10 @@
     <div id="statusBox" class="alert"><strong>尚未開始</strong><span>按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。</span></div>
   </div></div>
 
-  <div class="card"><div class="map-wrap"><div id="compassWrap" class="compass-wrap"><div class="compass-ring"><div id="compassArrow" class="compass-arrow"></div></div><div id="compassLabel" class="compass-label">N 0°</div></div><button id="mapFullscreenBtn" class="map-fab" type="button">全螢幕地圖</button><button id="mapLocateBtn" class="map-fab map-locate-fab" type="button">回到目前位置</button><div id="map"></div></div></div>
+  <div class="card"><div class="map-wrap"><div id="compassWrap" class="compass-wrap"><div class="compass-ring"><div id="compassArrow" class="compass-arrow"></div></div><div id="compassLabel" class="compass-label">N 0°</div></div><div class="map-tools-top"><button id="mapRotateBtn" class="map-fab map-mini-fab" type="button">旋轉</button><button id="mapFullscreenBtn" class="map-fab" type="button">全螢幕地圖</button></div><div class="map-tools-bottom"><button id="mapLocateBtn" class="map-fab map-locate-fab" type="button">回到目前位置</button></div><div id="map"></div></div></div>
 </div>
+
+<div id="toast" style="position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:7000;background:rgba(15,23,42,.92);color:#fff;padding:10px 14px;border-radius:999px;font-size:13px;font-weight:700;display:none;box-shadow:0 10px 24px rgba(15,23,42,.22)"></div>
 
 <div id="markerModal" class="modal-backdrop" aria-hidden="true">
   <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="markerModalTitle">
@@ -344,7 +354,7 @@
     resumeBtn:$("resumeBtn"), stopBtn:$("stopBtn"), locateBtn:$("locateBtn"), saveTrackBtn:$("saveTrackBtn"), clearBtn:$("clearBtn"),
     highAccuracy:$("highAccuracy"), followMap:$("followMap"), wakeLockEnabled:$("wakeLockEnabled"), darkModeEnabled:$("darkModeEnabled"),
     minDistance:$("minDistance"), imuScale:$("imuScale"), imuDistanceMultiplier:$("imuDistanceMultiplier"), imuFilterAlpha:$("imuFilterAlpha"), imuCalibrationStep:$("imuCalibrationStep"),
-    imuPointIntervalSec:$("imuPointIntervalSec"), imuMaxStepMeters:$("imuMaxStepMeters"), fusionGpsWeight:$("fusionGpsWeight"), fusionDriftLockMeters:$("fusionDriftLockMeters"), fusionAutoCalibSec:$("fusionAutoCalibSec"), exportFormat:$("exportFormat"), exportBtn:$("exportBtn"),
+    imuPointIntervalSec:$("imuPointIntervalSec"), imuMaxStepMeters:$("imuMaxStepMeters"), fusionGpsWeight:$("fusionGpsWeight"), fusionDriftLockMeters:$("fusionDriftLockMeters"), fusionAutoCalibSec:$("fusionAutoCalibSec"), gpsAccuracyLimit:$("gpsAccuracyLimit"), autoZoomNav:$("autoZoomNav"), exportFormat:$("exportFormat"), exportBtn:$("exportBtn"),
     exportFullBtn:$("exportFullBtn"), downloadCardBtn:$("downloadCardBtn"), downloadCardBtn2:$("downloadCardBtn2"),
     importFile:$("importFile"), refreshHistoryBtn:$("refreshHistoryBtn"), clearHistoryBtn:$("clearHistoryBtn"),
     showGpsLine:$("showGpsLine"), showImuLine:$("showImuLine"), showSmartLine:$("showSmartLine"), rotateMap:$("rotateMap"), navigationMode:$("navigationMode"), recordBadge:$("recordBadge"), statTime:$("statTime"), statDistance:$("statDistance"),
@@ -354,7 +364,7 @@
     markerModal:$("markerModal"), markerModalTitle:$("markerModalTitle"), markerModalSub:$("markerModalSub"), modalMarkerName:$("modalMarkerName"),
     modalMarkerCategory:$("modalMarkerCategory"), modalMarkerMemo:$("modalMarkerMemo"), markerDeleteBtn:$("markerDeleteBtn"), markerCancelBtn:$("markerCancelBtn"),
     markerSaveBtn:$("markerSaveBtn"), installBtn:$("installBtn"), refreshCacheBtn:$("refreshCacheBtn"), shareAppBtn:$("shareAppBtn"), shareTrackBtn:$("shareTrackBtn"),
-    toggleThemeBtn:$("toggleThemeBtn"), compareSummary:$("compareSummary"), cardCanvas:$("cardCanvas"), redrawCardBtn:$("redrawCardBtn"), mapFullscreenBtn:$("mapFullscreenBtn"), mapLocateBtn:$("mapLocateBtn"), compassWrap:$("compassWrap"), compassArrow:$("compassArrow"), compassLabel:$("compassLabel"), mapCard:document.querySelector(".wrap > .card:last-child")
+    toggleThemeBtn:$("toggleThemeBtn"), compareSummary:$("compareSummary"), cardCanvas:$("cardCanvas"), redrawCardBtn:$("redrawCardBtn"), mapRotateBtn:$("mapRotateBtn"), mapFullscreenBtn:$("mapFullscreenBtn"), mapLocateBtn:$("mapLocateBtn"), compassWrap:$("compassWrap"), compassArrow:$("compassArrow"), compassLabel:$("compassLabel"), toast:$("toast"), mapCard:document.querySelector(".wrap > .card:last-child")
   };
 
   function saveState(){
@@ -363,7 +373,7 @@
       userMarkers: state.userMarkers, historyCompareIds: state.historyCompareIds, historySearch: state.historySearch,
       followMap: state.followMap, highAccuracy: state.highAccuracy, wakeLockEnabled: state.wakeLockEnabled, darkModeEnabled: state.darkModeEnabled,
       minDistance: state.minDistance, imuScale: state.imuScale, imuDistanceMultiplier: state.imuDistanceMultiplier, imuFilterAlpha: state.imuFilterAlpha, imuCalibrationStep: state.imuCalibrationStep,
-      imuPointIntervalSec: state.imuPointIntervalSec, imuMaxStepMeters: state.imuMaxStepMeters, fusionGpsWeight: state.fusionGpsWeight, fusionDriftLockMeters: state.fusionDriftLockMeters, fusionAutoCalibSec: state.fusionAutoCalibSec, exportFormat: state.exportFormat,
+      imuPointIntervalSec: state.imuPointIntervalSec, imuMaxStepMeters: state.imuMaxStepMeters, fusionGpsWeight: state.fusionGpsWeight, fusionDriftLockMeters: state.fusionDriftLockMeters, fusionAutoCalibSec: state.fusionAutoCalibSec, gpsAccuracyLimit: state.gpsAccuracyLimit, autoZoomNav: state.autoZoomNav, exportFormat: state.exportFormat,
       markerCategory: state.markerCategory, showGpsLine: state.showGpsLine, showImuLine: state.showImuLine, showSmartLine: state.showSmartLine, rotateMap: state.rotateMap, navigationMode: state.navigationMode
     }));
   }
@@ -425,6 +435,16 @@
   function escapeHtml(s){ return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;"); }
   function csvCell(v){ const s=String(v ?? ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
   function formatAxisTime(ms){ const totalSec=Math.max(0,Math.floor(ms/1000)); const m=Math.floor(totalSec/60), s=totalSec%60; return m+":"+String(s).padStart(2,"0"); }
+
+  let toastTimer = null;
+  function showToast(msg){
+    if(!el.toast) return;
+    el.toast.textContent = msg;
+    el.toast.style.display = "block";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.toast.style.display = "none"; }, 1800);
+  }
+
   function applyTheme(){ document.body.classList.toggle("dark", !!state.darkModeEnabled); }
 
   async function setupPWA(){
@@ -534,11 +554,24 @@
     }
   }
 
+
+  function getSuggestedNavZoom(){
+    const latest = latestPoint();
+    let speedKmh = 0;
+    if(latest && Number.isFinite(latest.speed)) speedKmh = latest.speed * 3.6;
+    if(speedKmh < 5) return 18;
+    if(speedKmh < 15) return 17;
+    if(speedKmh < 35) return 16;
+    if(speedKmh < 60) return 15;
+    return 14;
+  }
+
   function maybeFollowMap(visibleAll){
     if(!state.followMap || Date.now()<state.suppressFollowUntil || !visibleAll.length) return;
     const latest = visibleAll[visibleAll.length-1];
     if(state.navigationMode && state.map){
       const heading = getSmoothedHeading();
+      if(state.autoZoomNav){ const targetZoom = getSuggestedNavZoom(); if(Math.abs((state.map.getZoom()||0) - targetZoom) >= 1){ state.map.setZoom(targetZoom, { animate:true }); } }
       const size = state.map.getSize();
       const centerPoint = state.map.latLngToContainerPoint(latest);
       const rad = heading * Math.PI / 180;
@@ -788,7 +821,8 @@
   
   function isBadGps(p){
     if(!p) return true;
-    if(p.accuracy && p.accuracy > 50) return true;
+    const limit = Math.max(10, Number(state.gpsAccuracyLimit) || 50);
+    if(p.accuracy && p.accuracy > limit) return true;
     if(p.speed && p.speed > 80/3.6) return true;
     return false;
   }
@@ -871,24 +905,24 @@
     updateCompassCompact();
   }
 
-  function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); if(el.fusionGpsWeight) el.fusionGpsWeight.value=String(state.fusionGpsWeight); if(el.fusionDriftLockMeters) el.fusionDriftLockMeters.value=String(state.fusionDriftLockMeters); if(el.fusionAutoCalibSec) el.fusionAutoCalibSec.value=String(state.fusionAutoCalibSec); el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; if(el.showSmartLine) el.showSmartLine.checked=state.showSmartLine;
-    if(el.rotateMap) el.rotateMap.checked=state.rotateMap; if(el.navigationMode) el.navigationMode.checked=state.navigationMode; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length+"；智慧線 "+(state.showSmartLine?"顯示":"隱藏")+"；融合權重 "+(Number(state.fusionGpsWeight||0.65).toFixed(2))+"；導航模式 "+(state.navigationMode?"開":"關"):"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
+  function updateUI(save){ if(save===undefined) save=true; el.trackName.value=state.trackName; el.placeName.value=state.placeName; el.markerCategory.value=state.markerCategory||"default"; el.highAccuracy.checked=state.highAccuracy; el.followMap.checked=state.followMap; el.wakeLockEnabled.checked=state.wakeLockEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; el.minDistance.value=String(state.minDistance); el.imuScale.value=String(state.imuScale); el.imuDistanceMultiplier.value=String(state.imuDistanceMultiplier); el.imuFilterAlpha.value=String(state.imuFilterAlpha); el.imuCalibrationStep.value=String(state.imuCalibrationStep); el.imuPointIntervalSec.value=String(state.imuPointIntervalSec); el.imuMaxStepMeters.value=String(state.imuMaxStepMeters); if(el.fusionGpsWeight) el.fusionGpsWeight.value=String(state.fusionGpsWeight); if(el.fusionDriftLockMeters) el.fusionDriftLockMeters.value=String(state.fusionDriftLockMeters); if(el.fusionAutoCalibSec) el.fusionAutoCalibSec.value=String(state.fusionAutoCalibSec); if(el.gpsAccuracyLimit) el.gpsAccuracyLimit.value=String(state.gpsAccuracyLimit); if(el.autoZoomNav) el.autoZoomNav.checked=!!state.autoZoomNav; el.exportFormat.value=state.exportFormat; el.showGpsLine.checked=state.showGpsLine; el.showImuLine.checked=state.showImuLine; if(el.showSmartLine) el.showSmartLine.checked=state.showSmartLine;
+    if(el.rotateMap) el.rotateMap.checked=state.rotateMap; if(el.navigationMode) el.navigationMode.checked=state.navigationMode; el.historySearch.value=state.historySearch||""; applyTheme(); updateStats(); el.startBtn.disabled=state.gpsEnabled; el.startImuBtn.disabled=state.imuEnabled; el.calibrateImuBtn.disabled=!state.imuPoints.length; el.pauseBtn.disabled=!state.isRecording||state.isPaused; el.resumeBtn.disabled=!state.isRecording||!state.isPaused; el.stopBtn.disabled=!state.isRecording; el.saveTrackBtn.disabled=!state.points.length; el.exportBtn.disabled=!state.points.length; if(state.isPaused){ el.recordBadge.textContent="Paused"; el.recordBadge.className="badge paused"; } else if(state.gpsEnabled&&state.imuEnabled){ el.recordBadge.textContent="GPS + IMU"; el.recordBadge.className="badge both"; } else if(state.gpsEnabled){ el.recordBadge.textContent="GPS"; el.recordBadge.className="badge gps"; } else if(state.imuEnabled){ el.recordBadge.textContent="IMU"; el.recordBadge.className="badge imu"; } else { el.recordBadge.textContent="Idle"; el.recordBadge.className="badge"; } const latest=latestPoint(), title=state.error||(state.isRecording?"正在記錄":"尚未開始"), text=latest?"最新點："+latest.lat.toFixed(6)+", "+latest.lng.toFixed(6)+"；GPS點 "+state.gpsPoints.length+"；IMU點 "+state.imuPoints.length+"；智慧線 "+(state.showSmartLine?"顯示":"隱藏")+"；融合權重 "+(Number(state.fusionGpsWeight||0.65).toFixed(2))+"；GPS門檻 "+String(Number(state.gpsAccuracyLimit||50).toFixed(0))+"m；導航模式 "+(state.navigationMode?"開":"關"):"按下開始後會持續記錄 GPS 或陀螺儀相對軌跡。"; el.statusBox.innerHTML="<strong>"+escapeHtml(title)+"</strong><span>"+escapeHtml(text)+"</span>"; renderPoints(); renderHistory(); renderMap(); updateCharts(); updateImuDebug(); updateCompareSummary(); drawShareCard(); if(save) saveState(); }
 
   el.trackName.addEventListener("input", function(){ state.trackName=this.value; saveState(); drawShareCard(); });
   el.placeName.addEventListener("input", function(){ state.placeName=this.value; saveState(); updateUI(false); });
   el.markerCategory.addEventListener("change", function(){ state.markerCategory=this.value; saveState(); updateUI(false); });
   el.applyPlaceNameBtn.addEventListener("click", applyPlaceNameToCurrent);
   el.renameBtn.addEventListener("click", function(){ state.trackName="track-"+new Date().toISOString().slice(0,16).replace(/[:T]/g,"-"); updateUI(); });
-  el.startBtn.addEventListener("click", startGps);
-  el.startImuBtn.addEventListener("click", startImuFlow);
+  el.startBtn.addEventListener("click", function(){ startGps(); showToast("開始 GPS 記錄"); });
+  el.startImuBtn.addEventListener("click", async function(){ await startImuFlow(); showToast("啟動陀螺儀"); });
   el.calibrateImuBtn.addEventListener("click", calibrateImu);
   el.centerBtn.addEventListener("click", centerToCurrent);
   el.pauseBtn.addEventListener("click", pauseRecording);
   el.resumeBtn.addEventListener("click", resumeRecording);
   el.stopBtn.addEventListener("click", stopRecording);
   el.locateBtn.addEventListener("click", updateCurrentPosition);
-  el.saveTrackBtn.addEventListener("click", function(){ saveHistory(); updateUI(); });
-  el.clearBtn.addEventListener("click", clearCurrent);
+  el.saveTrackBtn.addEventListener("click", function(){ saveHistory(); updateUI(); showToast("已保存此軌跡"); });
+  el.clearBtn.addEventListener("click", function(){ clearCurrent(); showToast("已清除目前軌跡"); });
   el.highAccuracy.addEventListener("change", function(){ state.highAccuracy=this.checked; saveState(); });
   el.followMap.addEventListener("change", function(){ state.followMap=this.checked; saveState(); updateUI(false); });
   el.wakeLockEnabled.addEventListener("change", function(){ state.wakeLockEnabled=this.checked; if(this.checked) ensureWakeLock(); else releaseWakeLock(); saveState(); });
@@ -903,11 +937,13 @@
   if(el.fusionGpsWeight) el.fusionGpsWeight.addEventListener("input", function(){ state.fusionGpsWeight=Math.max(0.05,Math.min(0.95,Number(this.value||0.65))); saveState(); updateUI(false); });
   if(el.fusionDriftLockMeters) el.fusionDriftLockMeters.addEventListener("input", function(){ state.fusionDriftLockMeters=Math.max(1,Math.min(30,Number(this.value||6))); saveState(); updateUI(false); });
   if(el.fusionAutoCalibSec) el.fusionAutoCalibSec.addEventListener("input", function(){ state.fusionAutoCalibSec=Math.max(3,Math.min(60,Number(this.value||12))); saveState(); updateUI(false); });
+  if(el.gpsAccuracyLimit) el.gpsAccuracyLimit.addEventListener("input", function(){ state.gpsAccuracyLimit=Math.max(10,Math.min(120,Number(this.value||50))); saveState(); updateUI(false); });
+  if(el.autoZoomNav) el.autoZoomNav.addEventListener("change", function(){ state.autoZoomNav=this.checked; saveState(); updateUI(false); });
   el.showGpsLine.addEventListener("change", function(){ state.showGpsLine=this.checked; updateUI(); });
   el.showImuLine.addEventListener("change", function(){ state.showImuLine=this.checked; updateUI(); });
   if(el.showSmartLine) el.showSmartLine.addEventListener("change", function(){ state.showSmartLine=this.checked; updateUI(); });
   if(el.rotateMap) el.rotateMap.addEventListener("change", function(){ state.rotateMap=this.checked; if(!this.checked) state.navigationMode=false; updateUI(); });
-  if(el.navigationMode) el.navigationMode.addEventListener("change", function(){ state.navigationMode=this.checked; if(this.checked) state.rotateMap=true; state.suppressFollowUntil=0; updateUI(); });
+  if(el.navigationMode) el.navigationMode.addEventListener("change", function(){ state.navigationMode=this.checked; if(this.checked) state.rotateMap=true; state.suppressFollowUntil=0; updateUI(); showToast(state.navigationMode ? "已開啟導航模式" : "已關閉導航模式"); });
   el.exportFormat.addEventListener("change", function(){ state.exportFormat=this.value; saveState(); });
   el.exportBtn.addEventListener("click", exportTrack);
   el.exportFullBtn.addEventListener("click", exportFullBackup);
@@ -929,7 +965,8 @@
   el.shareTrackBtn.addEventListener("click", shareTrack);
   el.toggleThemeBtn.addEventListener("click", function(){ state.darkModeEnabled=!state.darkModeEnabled; el.darkModeEnabled.checked=state.darkModeEnabled; saveState(); applyTheme(); drawShareCard(); });
   if(el.mapFullscreenBtn) el.mapFullscreenBtn.addEventListener("click", toggleMapFullscreen);
-  if(el.mapLocateBtn) el.mapLocateBtn.addEventListener("click", centerToCurrent);
+  if(el.mapLocateBtn) el.mapLocateBtn.addEventListener("click", function(){ centerToCurrent(); showToast("已回到目前位置"); });
+  if(el.mapRotateBtn) el.mapRotateBtn.addEventListener("click", function(){ state.rotateMap=!state.rotateMap; if(!state.rotateMap) state.navigationMode=false; saveState(); updateUI(); showToast(state.rotateMap ? "已開啟地圖旋轉" : "已關閉地圖旋轉"); });
   document.addEventListener("fullscreenchange", syncFullscreenButton);
   document.addEventListener("keydown", function(e){ if(e.key==="Escape" && document.body.classList.contains("map-fullscreen") && !document.fullscreenElement){ document.body.classList.remove("map-fullscreen"); syncFullscreenButton(); } });
   window.addEventListener("keydown", function(e){ if(e.key==="Escape"&&el.markerModal.classList.contains("show")) closeMarkerModal(); });
