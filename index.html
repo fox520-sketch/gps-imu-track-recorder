@@ -193,7 +193,7 @@
     <div class="action-grid">
       <button id="startBtn" class="btn primary" type="button">開始 GPS</button>
       <button id="startImuBtn" class="btn imu" type="button">開始陀螺儀</button>
-      <button id="calibrateImuBtn" class="btn secondary" type="button">校準到 GPS</button>
+      <button id="calibrateImuBtn" class="btn secondary" type="button">校準到目前 GPS</button>
       <button id="pauseBtn" class="btn warning" type="button" disabled>暫停</button>
       <button id="resumeBtn" class="btn success" type="button" disabled>繼續</button>
       <button id="stopBtn" class="btn secondary" type="button" disabled>停止</button>
@@ -880,7 +880,51 @@
   function resumeRecording(){ if(!state.isRecording||!state.isPaused) return; state.pausedAccumulatedMs+=Date.now()-state.pauseStartedAt; state.pauseStartedAt=null; state.isPaused=false; ensureWakeLock(); updateUI(); }
   function stopRecording(){ stopAllSensors(); state.isRecording=false; state.isPaused=false; state.gpsEnabled=false; state.imuEnabled=false; updateElapsed(); updateUI(); }
   function clearCurrent(){ stopRecording(); state.points=[]; state.gpsPoints=[]; state.imuPoints=[]; state.trackName="track-"+new Date().toISOString().slice(0,16).replace(/[:T]/g,"-"); state.placeName=""; state.elapsedMs=0; state.lastGpsFix=null; updateUI(); }
-  function calibrateImu(){ const gpsRef=state.lastGpsFix||(state.gpsPoints.length?state.gpsPoints[state.gpsPoints.length-1]:null), imuRef=state.imuPoints.length?state.imuPoints[state.imuPoints.length-1]:null; if(!gpsRef){ state.error="需要先有 GPS 定位點才能校準。"; updateUI(); return; } if(!imuRef){ state.error="需要先有 IMU 點才能校準。"; updateUI(); return; } const step=Math.max(0.05,Math.min(1,Number(state.imuCalibrationStep)||0.35)), newLat=imuRef.lat+(gpsRef.lat-imuRef.lat)*step, newLng=imuRef.lng+(gpsRef.lng-imuRef.lng)*step; addPoint({ lat:newLat,lng:newLng,accuracy:null,altitude:null,speed:0,heading:state.orientationHeading,timestamp:Date.now(),sourceMode:"imu",placeName:state.placeName }); if(state.imuSession){ state.imuSession.anchor={ lat:newLat,lng:newLng }; state.imuSession.posNorth=0; state.imuSession.posEast=0; state.imuSession.velocityNorth=0; state.imuSession.velocityEast=0; state.imuSession.pendingNorth=0; state.imuSession.pendingEast=0; state.imuSession.lastEmitLatLng={ lat:newLat,lng:newLng }; } state.error=""; saveState(); updateUI(); }
+  function calibrateImu(){
+    const gpsRef = state.lastGpsFix || (state.gpsPoints.length ? state.gpsPoints[state.gpsPoints.length - 1] : null);
+    const imuRef = state.imuPoints.length ? state.imuPoints[state.imuPoints.length - 1] : null;
+    if(!gpsRef){
+      state.error = "需要先有 GPS 定位點才能校準。";
+      updateUI();
+      return;
+    }
+    if(!imuRef){
+      state.error = "需要先有 IMU 點才能校準。";
+      updateUI();
+      return;
+    }
+
+    const newLat = gpsRef.lat;
+    const newLng = gpsRef.lng;
+
+    addPoint({
+      lat: newLat,
+      lng: newLng,
+      accuracy: null,
+      altitude: null,
+      speed: 0,
+      heading: state.orientationHeading,
+      timestamp: Date.now(),
+      sourceMode: "imu",
+      placeName: state.placeName
+    });
+
+    if(state.imuSession){
+      state.imuSession.anchor = { lat: newLat, lng: newLng };
+      state.imuSession.posNorth = 0;
+      state.imuSession.posEast = 0;
+      state.imuSession.velocityNorth = 0;
+      state.imuSession.velocityEast = 0;
+      state.imuSession.pendingNorth = 0;
+      state.imuSession.pendingEast = 0;
+      state.imuSession.lastEmitLatLng = { lat: newLat, lng: newLng };
+    }
+
+    state.error = "";
+    saveState();
+    updateUI();
+    if(typeof showToast === "function") showToast("IMU 已校準到目前 GPS 點");
+  }
   function updateCurrentPosition(){ if(!("geolocation" in navigator)) return; navigator.geolocation.getCurrentPosition(addGpsPosition, err=>{ state.error=err.message||"無法更新目前位置"; updateUI(); }, { enableHighAccuracy:true, maximumAge:0, timeout:15000 }); }
   function centerToCurrent(){ const p=latestPoint(); state.suppressFollowUntil=0; if(p){ state.map.setView([p.lat,p.lng],18); setTimeout(function(){ maybeFollowMap([[p.lat,p.lng]]); }, 80); } else if(state.lastGpsFix){ state.map.setView([state.lastGpsFix.lat,state.lastGpsFix.lng],18); setTimeout(function(){ maybeFollowMap([[state.lastGpsFix.lat,state.lastGpsFix.lng]]); }, 80); } }
   function applyPlaceNameToCurrent(){ const name=(state.placeName||"").trim(), latest=latestPoint(); if(!latest){ state.error="目前還沒有位置點可套用名稱。"; updateUI(); return; } latest.placeName=name; state.gpsPoints.forEach(p=>{ if(p.timestamp===latest.timestamp) p.placeName=name; }); state.imuPoints.forEach(p=>{ if(p.timestamp===latest.timestamp) p.placeName=name; }); state.points=state.gpsPoints.concat(state.imuPoints).sort((a,b)=>a.timestamp-b.timestamp); state.error=""; saveState(); renderMap(); updateUI(false); }
