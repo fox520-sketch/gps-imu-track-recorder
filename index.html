@@ -57,7 +57,7 @@
     .points,.history{max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:14px;padding:10px;background:var(--card)}
     .point,.history-item{border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px;font-size:13px;line-height:1.5}
     .chart{border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--card)}
-    #map{position:absolute;left:-18%;top:-18%;width:136%;min-height:0;height:136%;transform-origin:center center;transition:transform .12s linear}
+    #map{position:absolute;left:-30%;top:-30%;width:160%;min-height:0;height:160%;transform-origin:center center;transition:transform .12s linear}
     #map .leaflet-control-container{z-index:900;transform-origin:center center}
     #map .leaflet-control-container,
     #map .leaflet-top,
@@ -93,7 +93,7 @@
     body.map-fullscreen .wrap{max-width:none;padding:0;grid-template-columns:1fr}
     body.map-fullscreen .wrap > .card:first-child{display:none}
     body.map-fullscreen .wrap > .card:last-child{position:fixed;inset:0;z-index:2500;border-radius:0;border:0;padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
-    body.map-fullscreen #map{left:-18%;top:-18%;width:136%;height:136%;min-height:0}
+    body.map-fullscreen #map{left:-30%;top:-30%;width:160%;height:160%;min-height:0}
     body.map-fullscreen .map-fab{z-index:1600}
     body.map-fullscreen .map-locate-fab{top:auto;right:12px}
     body.map-fullscreen .compass-wrap{z-index:1600}
@@ -105,7 +105,7 @@
     .compass-arrow{position:absolute;left:50%;top:8px;width:0;height:0;transform:translateX(-50%);border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:22px solid #ef4444;transform-origin:50% 23px}
     .compass-arrow::after{content:"";position:absolute;left:-7px;top:22px;border-left:7px solid transparent;border-right:7px solid transparent;border-top:18px solid #e2e8f0}
     .compass-label{font-size:11px;font-weight:700;color:#fff;background:rgba(15,23,42,.5);padding:2px 8px;border-radius:999px}
-    @media (max-width:1024px){.wrap{grid-template-columns:1fr}#map{left:-18%;top:-18%;width:136%;height:136%;min-height:0}}
+    @media (max-width:1024px){.wrap{grid-template-columns:1fr}#map{left:-30%;top:-30%;width:160%;height:160%;min-height:0}}
 
 
   </style>
@@ -503,7 +503,7 @@
 
   function initMap(){
     state.map=L.map($("map"), { zoomControl:true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:"&copy; OpenStreetMap contributors", maxZoom:19 }).addTo(state.map);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:"&copy; OpenStreetMap contributors", maxZoom:19, keepBuffer: 12, updateWhenIdle: false, updateWhenZooming: true }).addTo(state.map);
     state.map.setView([25.033,121.5654],16);
     state.gpsLine=L.polyline([], { color:"#2563eb", weight:5, opacity:1 }).addTo(state.map);
     state.imuLine=L.polyline([], { color:"#7c3aed", weight:9, opacity:1, dashArray:"12 8" }).addTo(state.map);
@@ -584,7 +584,7 @@
 
     const rad = Math.abs((heading % 180) * Math.PI / 180);
     const norm = Math.min(rad, Math.PI - rad);
-    const extraScale = 1.18 + Math.sin(norm) * 0.08;
+    const extraScale = 1.28 + Math.sin(norm) * 0.14;
 
     mapEl.style.transform = "rotate(" + (-heading) + "deg) scale(" + extraScale.toFixed(3) + ")";
 
