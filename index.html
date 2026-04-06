@@ -325,7 +325,7 @@
     compareLayer: null, smartShadowLine: null, smartLine: null, placeLabelMarker: null, markerRefs: [], markerLayer: null, mapPressTimer: null, mapPressLatLng: null, suppressNextMapClick: false,
     showGpsLine: true, showImuLine: true, showSmartLine: true, rotateMap:false, navigationMode:false, lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
     imuEventCount: 0, imuLastEventAt: null, imuLastMoveAt: null, imuLastAccel: null, imuPermissionHint: "unknown", imuStillCounter: 0,
-    suppressFollowUntil: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, deferredPrompt: null, wakeLock: null
+    suppressFollowUntil: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, reopenFullscreenAfterModal: false, deferredPrompt: null, wakeLock: null
   };
 
   const el = {
@@ -643,10 +643,28 @@
 
 
   async function exitMapFullscreenForModal(){
+    state.reopenFullscreenAfterModal = !!document.fullscreenElement || document.body.classList.contains("map-fullscreen");
     if(document.fullscreenElement){
       try{ await document.exitFullscreen(); }catch(e){}
     }
     document.body.classList.remove("map-fullscreen");
+    syncFullscreenButton();
+  }
+
+  async function restoreFullscreenAfterModal(){
+    if(!state.reopenFullscreenAfterModal) return;
+    state.reopenFullscreenAfterModal = false;
+    const card = el.mapCard;
+    try{
+      if(card && card.requestFullscreen){
+        document.body.classList.add("map-fullscreen");
+        await card.requestFullscreen();
+      }else{
+        document.body.classList.add("map-fullscreen");
+      }
+    }catch(e){
+      document.body.classList.add("map-fullscreen");
+    }
     syncFullscreenButton();
   }
 
@@ -657,13 +675,13 @@
     else{ const item=state.userMarkers[state.markerModalIndex]; if(!item) return; el.markerModalTitle.textContent="編輯標記"; el.markerModalSub.textContent="可修改名稱、分類與備註。"; el.modalMarkerName.value=item.name||""; el.modalMarkerCategory.value=item.category||"default"; el.modalMarkerMemo.value=item.memo||""; el.markerDeleteBtn.classList.remove("hidden"); }
     el.markerModal.classList.add("show"); el.markerModal.setAttribute("aria-hidden","false"); setTimeout(()=>el.modalMarkerName.focus(),120);
   }
-  function closeMarkerModal(){ el.markerModal.classList.remove("show"); el.markerModal.setAttribute("aria-hidden","true"); }
+  async function closeMarkerModal(){ el.markerModal.classList.remove("show"); el.markerModal.setAttribute("aria-hidden","true"); await restoreFullscreenAfterModal(); }
   function getCategoryMeta(category){ const map={ default:{ label:"一般", color:"#2563eb" }, home:{ label:"家", color:"#16a34a" }, company:{ label:"公司", color:"#7c3aed" }, parking:{ label:"停車", color:"#f59e0b" }, warning:{ label:"注意", color:"#dc2626" } }; return map[category] || map.default; }
   function createUserMarkerIcon(category){ const meta=getCategoryMeta(category); return L.divIcon({ className:"user-marker-wrapper", html:'<div class="marker-pin" style="background:'+meta.color+';"></div>', iconSize:[16,16], iconAnchor:[8,8], popupAnchor:[0,-8] }); }
   function renderUserMarkers(){ if(!state.markerLayer) return; state.markerLayer.clearLayers(); state.markerRefs=[]; state.userMarkers.forEach((m,idx)=>{ const meta=getCategoryMeta(m.category||"default"); const mk=L.marker([m.lat,m.lng],{ icon:createUserMarkerIcon(m.category||"default") }).addTo(state.markerLayer); mk.bindPopup('<div style="min-width:200px;line-height:1.6;"><div class="marker-chip" style="background:'+meta.color+';">'+escapeHtml(meta.label)+'</div><div style="font-weight:700;font-size:14px;margin-bottom:4px;">'+escapeHtml(m.name)+'</div>'+(m.memo?'<div style="margin-bottom:6px;color:#475569;">'+escapeHtml(m.memo)+'</div>':'')+'<div>緯度：'+m.lat.toFixed(6)+'</div><div>經度：'+m.lng.toFixed(6)+'</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn secondary" style="padding:6px 10px;border-radius:10px;" onclick="openEditMarkerModal('+idx+')">編輯</button></div></div>'); state.markerRefs.push(mk); }); }
   window.openEditMarkerModal = async function(idx){ await openMarkerModal("edit",{ index:idx }); };
-  function saveMarkerFromModal(){ const name=(el.modalMarkerName.value||"").trim(), category=el.modalMarkerCategory.value||"default", memo=(el.modalMarkerMemo.value||"").trim(); if(!name){ el.modalMarkerName.focus(); return; } if(state.markerModalMode==="create"){ if(!state.markerModalLatLng) return; state.userMarkers.push({ lat:state.markerModalLatLng.lat, lng:state.markerModalLatLng.lng, name, category, memo }); } else { const item=state.userMarkers[state.markerModalIndex]; if(!item) return; item.name=name; item.category=category; item.memo=memo; } renderUserMarkers(); closeMarkerModal(); saveState(); }
-  function deleteMarkerFromModal(){ if(state.markerModalMode!=="edit") return; const item=state.userMarkers[state.markerModalIndex]; if(!item) return; state.userMarkers.splice(state.markerModalIndex,1); renderUserMarkers(); closeMarkerModal(); saveState(); }
+  async function saveMarkerFromModal(){ const name=(el.modalMarkerName.value||"").trim(), category=el.modalMarkerCategory.value||"default", memo=(el.modalMarkerMemo.value||"").trim(); if(!name){ el.modalMarkerName.focus(); return; } if(state.markerModalMode==="create"){ if(!state.markerModalLatLng) return; state.userMarkers.push({ lat:state.markerModalLatLng.lat, lng:state.markerModalLatLng.lng, name, category, memo }); } else { const item=state.userMarkers[state.markerModalIndex]; if(!item) return; item.name=name; item.category=category; item.memo=memo; } renderUserMarkers(); await closeMarkerModal(); saveState(); }
+  async function deleteMarkerFromModal(){ if(state.markerModalMode!=="edit") return; const item=state.userMarkers[state.markerModalIndex]; if(!item) return; state.userMarkers.splice(state.markerModalIndex,1); renderUserMarkers(); await closeMarkerModal(); saveState(); }
 
   function updateImuDebug(){ const parts=[]; const permissionText=state.imuPermissionHint==="granted" ? '<span style="color:#166534;font-weight:700">已授權</span>' : (state.imuPermissionHint==="denied" ? '<span style="color:#b91c1c;font-weight:700">未授權</span>' : '未確認'); parts.push("權限："+permissionText,"IMU 點位："+state.imuPoints.length,"感測事件數："+state.imuEventCount,"靜止鎖定計數："+state.imuStillCounter,"最後事件："+(state.imuLastEventAt?new Date(state.imuLastEventAt).toLocaleTimeString():"--"),"最後移動："+(state.imuLastMoveAt?new Date(state.imuLastMoveAt).toLocaleTimeString():"--")); if(state.imuLastAccel) parts.push("加速度：x "+state.imuLastAccel.x.toFixed(2)+", y "+state.imuLastAccel.y.toFixed(2)+", z "+state.imuLastAccel.z.toFixed(2)); el.imuDebugText.innerHTML=parts.join("<br>"); }
   function updateElapsed(){ if(!state.startedAt) return; const paused=state.isPaused&&state.pauseStartedAt?(Date.now()-state.pauseStartedAt):0; state.elapsedMs=Date.now()-state.startedAt-state.pausedAccumulatedMs-paused; if(state.elapsedMs<0) state.elapsedMs=0; }
