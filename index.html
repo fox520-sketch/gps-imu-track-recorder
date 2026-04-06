@@ -62,7 +62,7 @@
     .marker-pin{width:16px;height:16px;border-radius:999px;border:2px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.25)}
     .marker-chip{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;margin-bottom:6px;color:#fff}
     .place-label{display:inline-block;background:rgba(255,255,255,0.96);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:700;color:#0f172a;box-shadow:0 4px 12px rgba(15,23,42,.12);white-space:nowrap;pointer-events:auto}
-    .modal-backdrop{position:fixed;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;padding:16px;z-index:3000}
+    .modal-backdrop{position:fixed;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;padding:16px;z-index:5000}
     .modal-backdrop.show{display:flex}
     .modal-card{width:min(100%,460px);background:var(--card);border-radius:22px;border:1px solid var(--border);box-shadow:0 20px 50px rgba(15,23,42,.22);padding:18px}
     .modal-title{font-size:20px;font-weight:800;margin:0 0 8px}
@@ -641,17 +641,27 @@
     setTimeout(()=>state.map.invalidateSize(),50);
   }
 
-  function openMarkerModal(mode,payload){
+
+  async function exitMapFullscreenForModal(){
+    if(document.fullscreenElement){
+      try{ await document.exitFullscreen(); }catch(e){}
+    }
+    document.body.classList.remove("map-fullscreen");
+    syncFullscreenButton();
+  }
+
+  async function openMarkerModal(mode,payload){
+    await exitMapFullscreenForModal();
     state.markerModalMode=mode; state.markerModalIndex=payload&&Number.isInteger(payload.index)?payload.index:null; state.markerModalLatLng=payload&&payload.latlng?payload.latlng:null;
     if(mode==="create"){ el.markerModalTitle.textContent="新增標記"; el.markerModalSub.textContent="請輸入標記名稱與分類。"; el.modalMarkerName.value=""; el.modalMarkerCategory.value=state.markerCategory||"default"; el.modalMarkerMemo.value=""; el.markerDeleteBtn.classList.add("hidden"); }
     else{ const item=state.userMarkers[state.markerModalIndex]; if(!item) return; el.markerModalTitle.textContent="編輯標記"; el.markerModalSub.textContent="可修改名稱、分類與備註。"; el.modalMarkerName.value=item.name||""; el.modalMarkerCategory.value=item.category||"default"; el.modalMarkerMemo.value=item.memo||""; el.markerDeleteBtn.classList.remove("hidden"); }
-    el.markerModal.classList.add("show"); el.markerModal.setAttribute("aria-hidden","false"); setTimeout(()=>el.modalMarkerName.focus(),0);
+    el.markerModal.classList.add("show"); el.markerModal.setAttribute("aria-hidden","false"); setTimeout(()=>el.modalMarkerName.focus(),120);
   }
   function closeMarkerModal(){ el.markerModal.classList.remove("show"); el.markerModal.setAttribute("aria-hidden","true"); }
   function getCategoryMeta(category){ const map={ default:{ label:"一般", color:"#2563eb" }, home:{ label:"家", color:"#16a34a" }, company:{ label:"公司", color:"#7c3aed" }, parking:{ label:"停車", color:"#f59e0b" }, warning:{ label:"注意", color:"#dc2626" } }; return map[category] || map.default; }
   function createUserMarkerIcon(category){ const meta=getCategoryMeta(category); return L.divIcon({ className:"user-marker-wrapper", html:'<div class="marker-pin" style="background:'+meta.color+';"></div>', iconSize:[16,16], iconAnchor:[8,8], popupAnchor:[0,-8] }); }
   function renderUserMarkers(){ if(!state.markerLayer) return; state.markerLayer.clearLayers(); state.markerRefs=[]; state.userMarkers.forEach((m,idx)=>{ const meta=getCategoryMeta(m.category||"default"); const mk=L.marker([m.lat,m.lng],{ icon:createUserMarkerIcon(m.category||"default") }).addTo(state.markerLayer); mk.bindPopup('<div style="min-width:200px;line-height:1.6;"><div class="marker-chip" style="background:'+meta.color+';">'+escapeHtml(meta.label)+'</div><div style="font-weight:700;font-size:14px;margin-bottom:4px;">'+escapeHtml(m.name)+'</div>'+(m.memo?'<div style="margin-bottom:6px;color:#475569;">'+escapeHtml(m.memo)+'</div>':'')+'<div>緯度：'+m.lat.toFixed(6)+'</div><div>經度：'+m.lng.toFixed(6)+'</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn secondary" style="padding:6px 10px;border-radius:10px;" onclick="openEditMarkerModal('+idx+')">編輯</button></div></div>'); state.markerRefs.push(mk); }); }
-  window.openEditMarkerModal = function(idx){ openMarkerModal("edit",{ index:idx }); };
+  window.openEditMarkerModal = async function(idx){ await openMarkerModal("edit",{ index:idx }); };
   function saveMarkerFromModal(){ const name=(el.modalMarkerName.value||"").trim(), category=el.modalMarkerCategory.value||"default", memo=(el.modalMarkerMemo.value||"").trim(); if(!name){ el.modalMarkerName.focus(); return; } if(state.markerModalMode==="create"){ if(!state.markerModalLatLng) return; state.userMarkers.push({ lat:state.markerModalLatLng.lat, lng:state.markerModalLatLng.lng, name, category, memo }); } else { const item=state.userMarkers[state.markerModalIndex]; if(!item) return; item.name=name; item.category=category; item.memo=memo; } renderUserMarkers(); closeMarkerModal(); saveState(); }
   function deleteMarkerFromModal(){ if(state.markerModalMode!=="edit") return; const item=state.userMarkers[state.markerModalIndex]; if(!item) return; state.userMarkers.splice(state.markerModalIndex,1); renderUserMarkers(); closeMarkerModal(); saveState(); }
 
