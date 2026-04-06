@@ -167,7 +167,7 @@
     <div class="group"><div class="row"><div><label style="margin:0">顯示 GPS 軌跡</label></div><input id="showGpsLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">顯示陀螺儀軌跡</label></div><input id="showImuLine" class="switch" type="checkbox" checked></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">顯示智慧軌跡</label><div class="mini">白色主線，融合 GPS / IMU 並做平滑修正</div></div><input id="showSmartLine" class="switch" type="checkbox" checked></div></div>
-    <div class="group"><label for="rotateMode">旋轉模式選擇</label><select id="rotateMode" class="select"><option value="off">關閉</option><option value="stable">穩定模式</option><option value="navigation">導航模式</option><option value="compass">指南針模式</option><option value="manual">手動旋轉模式</option></select><div class="mini">穩定模式：低速較穩｜導航模式：導航視角｜指南針模式：原地也會轉｜手動旋轉：自己調整角度</div></div>
+    <div class="group"><label for="rotateMode">旋轉模式選擇</label><select id="rotateMode" class="select"><option value="off">關閉</option><option value="stable">穩定模式</option><option value="navigation">導航模式</option><option value="compass">指南針模式</option><option value="manual">手動旋轉模式</option></select><div class="mini">穩定模式：低速較穩｜導航模式：導航視角｜指南針模式：原地也會轉｜手動旋轉：可用滑桿、按鈕、雙指手勢旋轉地圖</div></div>
       <div class="group"><label for="manualRotateAngle">手動旋轉角度</label><input id="manualRotateAngle" class="input" type="range" min="0" max="359" step="1" value="0"><div class="btns" style="margin-top:8px"><button id="manualRotateLeftBtn" class="btn secondary" type="button">左轉 15°</button><button id="manualRotateResetBtn" class="btn secondary" type="button">回正 0°</button><button id="manualRotateRightBtn" class="btn secondary" type="button">右轉 15°</button></div><div class="mini">目前角度：<span id="manualRotateAngleText">0°</span></div></div>
     <div class="group"><div class="row"><div><label style="margin:0">導航模式</label><div class="mini">位置固定在畫面下方，地圖跟隨前進方向</div></div><input id="navigationMode" class="switch" type="checkbox"></div></div>
 
@@ -346,7 +346,7 @@
     compareLayer: null, smartShadowLine: null, smartLine: null, placeLabelMarker: null, markerRefs: [], markerLayer: null, mapPressTimer: null, mapPressLatLng: null, suppressNextMapClick: false,
     showGpsLine: true, showImuLine: true, showSmartLine: true, rotateMap:false, navigationMode:false, rotateMode:"off", manualRotateAngle:0, lastGpsFix: null, orientationHeading: 0, imuSession: null, imuMotionHandler: null, imuOrientationHandler: null,
     imuEventCount: 0, imuLastEventAt: null, imuLastMoveAt: null, imuLastAccel: null, imuPermissionHint: "unknown", imuStillCounter: 0,
-    suppressFollowUntil: 0, smoothedHeading: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, reopenFullscreenAfterModal: false, deferredPrompt: null, wakeLock: null
+    suppressFollowUntil: 0, smoothedHeading: 0, gestureRotationStart: null, gestureStartAngle: 0, error: "", markerModalMode: "create", markerModalIndex: null, markerModalLatLng: null, reopenFullscreenAfterModal: false, deferredPrompt: null, wakeLock: null
   };
 
   const el = {
@@ -574,10 +574,17 @@
   function applyMapRotation(){
     const mapEl = document.getElementById("map");
     if(!mapEl) return;
-    const target = mapEl.querySelector(".leaflet-map-pane") || mapEl;
+    const pane = mapEl.querySelector(".leaflet-map-pane");
     const heading = ((state.rotateMode || "off") !== "off") ? getRotateModeHeading() : 0;
-    target.style.transformOrigin = "50% 50%";
-    target.style.transform = "rotate(" + (-heading) + "deg)";
+    if(pane){
+      const base = pane._leaflet_pos;
+      const translate = base ? "translate3d(" + base.x + "px," + base.y + "px,0px) " : "";
+      pane.style.transformOrigin = "50% 50%";
+      pane.style.transform = translate + "rotate(" + (-heading) + "deg)";
+    }else{
+      mapEl.style.transformOrigin = "50% 50%";
+      mapEl.style.transform = "rotate(" + (-heading) + "deg)";
+    }
   }
 
 
@@ -1023,15 +1030,58 @@
 
   loadState(); applyImuDistanceMultiplier(); applyTheme(); initMap(); renderUserMarkers(); renderHistory(); updateUI(); setupPWA();
 
+
+  function touchAngle(t1, t2){
+    return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * 180 / Math.PI;
+  }
+
+  function normalizeAngle(a){
+    let x = Number(a) || 0;
+    while(x < 0) x += 360;
+    while(x >= 360) x -= 360;
+    return x;
+  }
+
   function clearMapPressTimer(){ if(state.mapPressTimer){ clearTimeout(state.mapPressTimer); state.mapPressTimer=null; } }
   function beginLongPressFromDomEvent(ev){ clearMapPressTimer(); state.mapPressLatLng=state.map.mouseEventToLatLng(ev); state.mapPressTimer=setTimeout(function(){ state.suppressNextMapClick=true; if(navigator.vibrate){ try{ navigator.vibrate(30); }catch(e){} } if(state.mapPressLatLng) openMarkerModal("create",{ latlng:state.mapPressLatLng }); clearMapPressTimer(); },600); }
   const mapContainer=state.map.getContainer();
   mapContainer.addEventListener("mousedown", beginLongPressFromDomEvent);
   mapContainer.addEventListener("mouseup", clearMapPressTimer);
   mapContainer.addEventListener("mouseleave", clearMapPressTimer);
-  mapContainer.addEventListener("touchstart", function(ev){ if(ev.touches&&ev.touches.length) beginLongPressFromDomEvent(ev.touches[0]); }, { passive:true });
-  mapContainer.addEventListener("touchend", clearMapPressTimer, { passive:true });
-  mapContainer.addEventListener("touchcancel", clearMapPressTimer, { passive:true });
+  mapContainer.addEventListener("touchstart", function(ev){
+    if(ev.touches && ev.touches.length === 2){
+      clearMapPressTimer();
+      state.rotateMode = "manual";
+      syncRotateModeFlags();
+      state.gestureRotationStart = touchAngle(ev.touches[0], ev.touches[1]);
+      state.gestureStartAngle = Number(state.manualRotateAngle) || 0;
+      if(el.rotateMode) el.rotateMode.value = "manual";
+      showToast("已進入手動旋轉模式");
+      return;
+    }
+    if(ev.touches&&ev.touches.length===1) beginLongPressFromDomEvent(ev.touches[0]);
+  }, { passive:true });
+
+  mapContainer.addEventListener("touchmove", function(ev){
+    if(ev.touches && ev.touches.length === 2 && state.gestureRotationStart !== null){
+      const current = touchAngle(ev.touches[0], ev.touches[1]);
+      const delta = current - state.gestureRotationStart;
+      setManualRotation(normalizeAngle(state.gestureStartAngle + delta));
+      updateUI(false);
+    }
+  }, { passive:true });
+
+  mapContainer.addEventListener("touchend", function(ev){
+    if(!ev.touches || ev.touches.length < 2){
+      state.gestureRotationStart = null;
+    }
+    clearMapPressTimer();
+  }, { passive:true });
+
+  mapContainer.addEventListener("touchcancel", function(){
+    state.gestureRotationStart = null;
+    clearMapPressTimer();
+  }, { passive:true });
   state.map.on("movestart", function(){ clearMapPressTimer(); state.suppressFollowUntil=Date.now()+8000; });
   state.map.on("click", function(){ if(state.suppressNextMapClick){ state.suppressNextMapClick=false; return; } });
 })();
