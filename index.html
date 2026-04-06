@@ -574,17 +574,36 @@
   function applyMapRotation(){
     const mapEl = document.getElementById("map");
     if(!mapEl) return;
-    const pane = mapEl.querySelector(".leaflet-map-pane");
+
     const heading = ((state.rotateMode || "off") !== "off") ? getRotateModeHeading() : 0;
-    if(pane){
-      const base = pane._leaflet_pos;
-      const translate = base ? "translate3d(" + base.x + "px," + base.y + "px,0px) " : "";
+    const rotate = " rotate(" + (-heading) + "deg)";
+
+    const paneSelectors = [
+      ".leaflet-tile-pane",
+      ".leaflet-overlay-pane",
+      ".leaflet-shadow-pane",
+      ".leaflet-marker-pane",
+      ".leaflet-tooltip-pane",
+      ".leaflet-popup-pane"
+    ];
+
+    paneSelectors.forEach(function(sel){
+      const pane = mapEl.querySelector(sel);
+      if(!pane) return;
       pane.style.transformOrigin = "50% 50%";
-      pane.style.transform = translate + "rotate(" + (-heading) + "deg)";
-    }else{
-      mapEl.style.transformOrigin = "50% 50%";
-      mapEl.style.transform = "rotate(" + (-heading) + "deg)";
-    }
+
+      if(pane._leaflet_pos){
+        const pos = pane._leaflet_pos;
+        pane.style.transform = "translate3d(" + pos.x + "px," + pos.y + "px,0px)" + rotate;
+      }else{
+        const current = pane.style.transform || "";
+        if(current.includes("translate3d(")){
+          pane.style.transform = current.replace(/ rotate\([^)]*\)/g, "") + rotate;
+        }else{
+          pane.style.transform = rotate;
+        }
+      }
+    });
   }
 
 
@@ -1067,7 +1086,9 @@
       const current = touchAngle(ev.touches[0], ev.touches[1]);
       const delta = current - state.gestureRotationStart;
       setManualRotation(normalizeAngle(state.gestureStartAngle + delta));
-      updateUI(false);
+      applyMapRotation();
+      updateCompass();
+      if(el.manualRotateAngleText) el.manualRotateAngleText.textContent = String(Math.round(Number(state.manualRotateAngle)||0)) + "°";
     }
   }, { passive:true });
 
@@ -1084,6 +1105,9 @@
   }, { passive:true });
   state.map.on("movestart", function(){ clearMapPressTimer(); state.suppressFollowUntil=Date.now()+8000; });
   state.map.on("click", function(){ if(state.suppressNextMapClick){ state.suppressNextMapClick=false; return; } });
+  state.map.on("move", function(){ applyMapRotation(); });
+  state.map.on("zoom", function(){ applyMapRotation(); });
+  state.map.on("resize", function(){ applyMapRotation(); });
 })();
 </script>
 </body>
